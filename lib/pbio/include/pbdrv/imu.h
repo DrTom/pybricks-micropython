@@ -49,6 +49,8 @@ typedef struct {
  */
 pbio_error_t pbdrv_imu_get_imu(pbdrv_imu_dev_t **imu_dev, pbdrv_imu_config_t **config);
 
+float pbdrv_imu_get_temperature();
+
 /**
  * Tests if imu has been stationary for about one second.
  *
@@ -87,6 +89,10 @@ void pbdrv_imu_set_data_handlers(pbdrv_imu_dev_t *imu_dev, pbdrv_imu_handle_fram
 
 static inline pbio_error_t pbdrv_imu_get_imu(pbdrv_imu_dev_t **imu_dev, pbdrv_imu_config_t **config) {
     return PBIO_ERROR_NOT_SUPPORTED;
+}
+
+static inline float pbdrv_imu_get_temperature(){
+    return 0.0f;
 }
 
 static inline bool pbdrv_imu_is_stationary(pbdrv_imu_dev_t *imu_dev) {

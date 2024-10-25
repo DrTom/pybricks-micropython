@@ -96,6 +96,8 @@ pbio_error_t pbio_imu_get_single_axis_rotation(pbio_geometry_xyz_t *axis, float 
 
 pbio_geometry_side_t pbio_imu_get_up_side(bool calibrated);
 
+float pbio_imu_get_temperature(void);
+
 float pbio_imu_get_heading(void);
 
 void pbio_imu_set_heading(float desired_heading);
@@ -137,6 +139,10 @@ static inline void pbio_imu_get_acceleration(pbio_geometry_xyz_t *values, bool c
 
 static inline pbio_geometry_side_t pbio_imu_get_up_side(bool calibrated) {
     return PBIO_GEOMETRY_SIDE_TOP;
+}
+
+static inline float pbio_imu_get_temperature(void) {
+    return 0.0f;
 }
 
 static inline float pbio_imu_get_heading(void) {

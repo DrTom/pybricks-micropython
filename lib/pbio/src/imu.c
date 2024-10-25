@@ -364,6 +364,10 @@ pbio_geometry_side_t pbio_imu_get_up_side(bool calibrated) {
     return pbio_geometry_side_from_vector(acceleration);
 }
 
+float pbio_imu_get_temperature(void) {
+    return pbdrv_imu_get_temperature();
+}
+
 static float heading_offset = 0;
 
 /**

@@ -281,6 +281,15 @@ static mp_obj_t pb_type_imu_settings(size_t n_args, const mp_obj_t *pos_args, mp
 }
 static MP_DEFINE_CONST_FUN_OBJ_KW(pb_type_imu_settings_obj, 1, pb_type_imu_settings);
 
+
+// pybricks._common.IMU.temperature
+static mp_obj_t pb_type_imu_temperature(mp_obj_t self_in) {
+    (void)self_in;
+    return mp_obj_new_float(pbio_imu_get_temperature());
+}
+MP_DEFINE_CONST_FUN_OBJ_1(pb_type_imu_temperature_obj, pb_type_imu_temperature);
+
+
 // pybricks._common.IMU.heading
 static mp_obj_t pb_type_imu_heading(mp_obj_t self_in) {
     (void)self_in;
@@ -337,6 +346,7 @@ static const mp_rom_map_elem_t pb_type_imu_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_rotation),         MP_ROM_PTR(&pb_type_imu_rotation_obj)        },
     { MP_ROM_QSTR(MP_QSTR_settings),         MP_ROM_PTR(&pb_type_imu_settings_obj)        },
     { MP_ROM_QSTR(MP_QSTR_stationary),       MP_ROM_PTR(&pb_type_imu_stationary_obj)      },
+    { MP_ROM_QSTR(MP_QSTR_temperature),      MP_ROM_PTR(&pb_type_imu_temperature_obj)     },
     { MP_ROM_QSTR(MP_QSTR_tilt),             MP_ROM_PTR(&pb_type_imu_tilt_obj)            },
     { MP_ROM_QSTR(MP_QSTR_up),               MP_ROM_PTR(&pb_type_imu_up_obj)              },
     { MP_ROM_QSTR(MP_QSTR_update_heading_correction), MP_ROM_PTR(&pb_type_imu_update_heading_correction_obj)},

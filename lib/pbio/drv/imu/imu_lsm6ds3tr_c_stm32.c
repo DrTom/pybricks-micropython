@@ -27,6 +27,17 @@
 #include "../core.h"
 #include "./imu_lsm6ds3tr_c_stm32.h"
 
+// temperature >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+typedef union{
+  int16_t i16bit;
+  uint8_t u8bit[2];
+} raw_temp_t;
+
+static raw_temp_t data_raw_temperature;
+static float temperature_degC;
+
+// temperature <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
 typedef enum {
     /** Initialization is not complete yet. */
     IMU_INIT_STATE_BUSY,
@@ -332,6 +343,29 @@ PROCESS_THREAD(pbdrv_imu_lsm6ds3tr_c_stm32_process, ev, data) {
     }
 
 retry:
+
+   // read temperature >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+    imu_dev->ctx.read_write_done = false;
+    HAL_StatusTypeDef ret_temp = HAL_I2C_Mem_Read_IT(&imu_dev->hi2c, 
+        LSM6DS3TR_C_I2C_ADD_L, 
+        LSM6DS3TR_C_OUT_TEMP_L, 
+        I2C_MEMADD_SIZE_8BIT, 
+        data_raw_temperature.u8bit, 2);
+
+    if (ret_temp != HAL_OK) {
+        pbdrv_imu_lsm6ds3tr_c_stm32_i2c_reset(hi2c);
+        goto retry;
+    } 
+     
+    PROCESS_WAIT_UNTIL(imu_dev->ctx.read_write_done);
+    
+    temperature_degC = lsm6ds3tr_c_from_lsb_to_celsius(data_raw_temperature.i16bit);
+    // printf("Temperature: %.2f C\n", temperature_degC);
+
+    // read temperature <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+
     // Write the register address of the start of the gyro and accel data.
     buf[0] = LSM6DS3TR_C_OUTX_L_G;
     imu_dev->ctx.read_write_done = false;
@@ -356,9 +390,15 @@ retry:
     // value each time we want to read new data. This saves CPU usage since
     // we have fewer interrupts per sample.
 
-    for (;;) {
-        PROCESS_WAIT_EVENT_UNTIL(atomic_exchange(&imu_dev->int1, false));
+    for (int i = 1; ; i++) {
 
+        // test if repeated temperature readout works at all -> OK 
+        // pbdrv_imu_lsm6ds3tr_c_stm32_i2c_reset(hi2c); 
+        // goto retry;
+
+
+        PROCESS_WAIT_EVENT_UNTIL(atomic_exchange(&imu_dev->int1, false));
+ 
         imu_dev->ctx.read_write_done = false;
         ret = HAL_I2C_Master_Seq_Receive_IT(
             &imu_dev->hi2c, LSM6DS3TR_C_I2C_ADD_L, buf, NUM_DATA_BYTES, I2C_NEXT_FRAME);
@@ -389,6 +429,12 @@ retry:
         pbdrv_imu_lsm6ds3tr_c_stm32_update_stationary_status(imu_dev);
         if (imu_dev->handle_frame_data) {
             imu_dev->handle_frame_data(imu_dev->data);
+        }
+
+        // this never ever happtes, WHY?
+        if (i == LSM6DS3TR_INITIAL_DATA_RATE) {
+            pbdrv_imu_lsm6ds3tr_c_stm32_i2c_reset(hi2c); 
+            goto retry;
         }
     }
 
@@ -427,5 +473,9 @@ void pbdrv_imu_set_data_handlers(pbdrv_imu_dev_t *imu_dev, pbdrv_imu_handle_fram
 bool pbdrv_imu_is_stationary(pbdrv_imu_dev_t *imu_dev) {
     return imu_dev->stationary_now;
 }
+
+float pbdrv_imu_get_temperature() {
+    return temperature_degC;
+}   
 
 #endif // PBDRV_CONFIG_IMU_LSM6S3TR_C_STM32
