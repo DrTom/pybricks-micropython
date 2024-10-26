@@ -35,6 +35,7 @@ typedef union{
 
 static raw_temp_t data_raw_temperature;
 static float temperature_degC;
+static int temp_read_counter = 0;
 
 // temperature <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
@@ -390,12 +391,16 @@ retry:
     // value each time we want to read new data. This saves CPU usage since
     // we have fewer interrupts per sample.
 
-    for (int i = 1; ; i++) {
+    for (;;) {
 
-        // test if repeated temperature readout works at all -> OK 
-        // pbdrv_imu_lsm6ds3tr_c_stm32_i2c_reset(hi2c); 
-        // goto retry;
-
+        if (temp_read_counter >= 1 * LSM6DS3TR_INITIAL_DATA_RATE) {
+            temp_read_counter = 0;
+            // reset not required since and also it causes the hub to crash after a
+            // few seconds pbdrv_imu_lsm6ds3tr_c_stm32_i2c_reset(hi2c);
+            goto retry;
+        } else {
+            temp_read_counter++;
+        }
 
         PROCESS_WAIT_EVENT_UNTIL(atomic_exchange(&imu_dev->int1, false));
  
@@ -431,11 +436,6 @@ retry:
             imu_dev->handle_frame_data(imu_dev->data);
         }
 
-        // this never ever happtes, WHY?
-        if (i == LSM6DS3TR_INITIAL_DATA_RATE) {
-            pbdrv_imu_lsm6ds3tr_c_stm32_i2c_reset(hi2c); 
-            goto retry;
-        }
     }
 
     PROCESS_END();
