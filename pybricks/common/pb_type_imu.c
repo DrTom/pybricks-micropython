@@ -247,6 +247,49 @@ static mp_obj_t pb_type_imu_update_heading_correction(mp_obj_t self_in) {
 }
 MP_DEFINE_CONST_FUN_OBJ_1(pb_type_imu_update_heading_correction_obj, pb_type_imu_update_heading_correction);
 
+
+// pybricks._common.IMU.set_stationary_min_samples
+static mp_obj_t pb_type_imu_set_stationary_min_samples(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    PB_PARSE_ARGS_METHOD(n_args, pos_args, kw_args,
+        pb_type_imu_obj_t, self,
+        PB_ARG_REQUIRED(samples));
+
+    // Set the new wait_time
+    (void)self;
+    pbio_imu_set_stationary_min_samples(mp_obj_get_int(samples_in));
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_KW(pb_type_imu_set_stationary_min_samples_obj, 1, pb_type_imu_set_stationary_min_samples);
+
+
+
+// pybricks.common.IMU.gyro_bias
+static mp_obj_t pb_type_imu_gyro_bias(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    PB_PARSE_ARGS_METHOD(n_args, pos_args, kw_args,
+        pb_type_imu_obj_t, self,
+        PB_ARG_DEFAULT_FALSE(reset));
+
+    (void)self;
+
+    if (mp_obj_is_true(reset_in)) {
+        pbio_imu_gyro_bias_reset();
+    }
+
+    pbio_geometry_xyz_t gyro_bias;
+    uint32_t samples_count;
+    pbio_imu_gyro_bias_get(&gyro_bias, &samples_count);
+
+    mp_obj_t ret[] = {
+        pb_type_Matrix_make_vector(3, gyro_bias.values, false),
+        mp_obj_new_int(samples_count),
+    };
+
+    return mp_obj_new_tuple(MP_ARRAY_SIZE(ret), ret);
+}
+MP_DEFINE_CONST_FUN_OBJ_KW(pb_type_imu_gyro_bias_obj, 1, pb_type_imu_gyro_bias);
+
+
+
 // dir(pybricks.common.IMU)
 static const mp_rom_map_elem_t pb_type_imu_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_acceleration),     MP_ROM_PTR(&pb_type_imu_acceleration_obj)    },
@@ -260,6 +303,8 @@ static const mp_rom_map_elem_t pb_type_imu_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_tilt),             MP_ROM_PTR(&pb_type_imu_tilt_obj)            },
     { MP_ROM_QSTR(MP_QSTR_up),               MP_ROM_PTR(&pb_type_imu_up_obj)              },
     { MP_ROM_QSTR(MP_QSTR_update_heading_correction), MP_ROM_PTR(&pb_type_imu_update_heading_correction_obj)},
+    { MP_ROM_QSTR(MP_QSTR_set_stationary_min_samples), MP_ROM_PTR(&pb_type_imu_set_stationary_min_samples_obj)},
+    { MP_ROM_QSTR(MP_QSTR_gyro_bias),                  MP_ROM_PTR(&pb_type_imu_gyro_bias_obj)},
 };
 static MP_DEFINE_CONST_DICT(pb_type_imu_locals_dict, pb_type_imu_locals_dict_table);
 
