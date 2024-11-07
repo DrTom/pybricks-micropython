@@ -211,6 +211,49 @@ STATIC mp_obj_t common_IMU_reset_heading(size_t n_args, const mp_obj_t *pos_args
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_KW(common_IMU_reset_heading_obj, 1, common_IMU_reset_heading);
 
+
+// pybricks._common.IMU.set_stationary_min_samples
+STATIC mp_obj_t common_IMU_set_stationary_min_samples(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    PB_PARSE_ARGS_METHOD(n_args, pos_args, kw_args,
+        common_IMU_obj_t, self,
+        PB_ARG_REQUIRED(samples));
+
+    // Set the new wait_time
+    (void)self;
+    pbio_imu_set_stationary_min_samples(mp_obj_get_int(samples_in));
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_KW(common_IMU_set_stationary_min_samples_obj, 1, common_IMU_set_stationary_min_samples);
+
+
+
+// pybricks.common.IMU.gyro_bias
+STATIC mp_obj_t common_IMU_gyro_bias(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    PB_PARSE_ARGS_METHOD(n_args, pos_args, kw_args,
+        common_IMU_obj_t, self,
+        PB_ARG_DEFAULT_FALSE(reset));
+
+    (void)self;
+
+    if (mp_obj_is_true(reset_in)) {
+        pbio_imu_gyro_bias_reset();
+    }
+
+    pbio_geometry_xyz_t gyro_bias;
+    uint32_t samples_count;
+    pbio_imu_gyro_bias_get(&gyro_bias, &samples_count);
+
+    mp_obj_t ret[] = {
+        pb_type_Matrix_make_vector(3, gyro_bias.values, false),
+        mp_obj_new_int(samples_count),
+    };
+
+    return mp_obj_new_tuple(MP_ARRAY_SIZE(ret), ret);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_KW(common_IMU_gyro_bias_obj, 1, common_IMU_gyro_bias);
+
+
+
 // dir(pybricks.common.IMU)
 STATIC const mp_rom_map_elem_t common_IMU_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_acceleration),     MP_ROM_PTR(&common_IMU_acceleration_obj)    },
@@ -223,6 +266,9 @@ STATIC const mp_rom_map_elem_t common_IMU_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_stationary),       MP_ROM_PTR(&common_IMU_stationary_obj)      },
     { MP_ROM_QSTR(MP_QSTR_tilt),             MP_ROM_PTR(&common_IMU_tilt_obj)            },
     { MP_ROM_QSTR(MP_QSTR_up),               MP_ROM_PTR(&common_IMU_up_obj)              },
+    { MP_ROM_QSTR(MP_QSTR_set_stationary_min_samples), MP_ROM_PTR(&common_IMU_set_stationary_min_samples_obj)},
+    { MP_ROM_QSTR(MP_QSTR_gyro_bias),       MP_ROM_PTR(&common_IMU_gyro_bias_obj)},
+
 };
 STATIC MP_DEFINE_CONST_DICT(common_IMU_locals_dict, common_IMU_locals_dict_table);
 

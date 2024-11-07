@@ -32,7 +32,13 @@ void pbio_imu_get_stationary_thresholds(float *angular_velocity, float *accelera
 
 void pbio_imu_set_stationary_thresholds(float angular_velocity, float acceleration);
 
+void pbio_imu_set_stationary_min_samples(uint16_t pbio_imu_set_stationary_min_samples);
+
 void pbio_imu_get_angular_velocity(pbio_geometry_xyz_t *values);
+
+void pbio_imu_gyro_bias_get(pbio_geometry_xyz_t *values, uint32_t *samples_count);
+
+void pbio_imu_gyro_bias_reset(void);
 
 void pbio_imu_get_acceleration(pbio_geometry_xyz_t *values);
 
@@ -60,6 +66,15 @@ static inline bool pbio_imu_is_stationary(void) {
 }
 
 static inline void pbio_imu_set_stationary_thresholds(float angular_velocity, float acceleration) {
+}
+
+static inline void pbio_imu_set_stationary_min_samples(uint16_t stationary_min_samples) {
+}
+
+static inline void pbio_imu_gyro_bias_get(pbio_geometry_xyz_t *values, uint32_t *samples_count) {
+}
+
+static inline void pbio_imu_gyro_bias_reset(void) {
 }
 
 static inline void pbio_imu_get_angular_velocity(pbio_geometry_xyz_t *values) {

@@ -231,6 +231,8 @@ static PT_THREAD(pbdrv_imu_lsm6ds3tr_c_stm32_init(struct pt *pt)) {
     imu_dev->config.gyro_stationary_threshold = 71; // 5 deg/s
     imu_dev->config.accel_stationary_threshold = 1044; // 2500 mm/s^2, or approx 25% of gravity
 
+    imu_dev->config.stationary_min_samples = LSM6DS3TR_INITIAL_DATA_RATE ; 
+
     // Configure INT1 to trigger when new gyro data is ready.
     PT_SPAWN(pt, &child, lsm6ds3tr_c_pin_int1_route_set(&child, ctx, (lsm6ds3tr_c_int1_route_t) {
         .int1_drdy_g = 1,
@@ -292,7 +294,7 @@ static void pbdrv_imu_lsm6ds3tr_c_stm32_update_stationary_status(pbdrv_imu_dev_t
     imu_dev->stationary_accel_data_sum[2] += imu_dev->data[5];
 
     // Exit if we don't have enough samples yet.
-    if (imu_dev->stationary_sample_count < LSM6DS3TR_INITIAL_DATA_RATE) {
+    if (imu_dev->stationary_sample_count < (uint32_t) imu_dev->config.stationary_min_samples) {
         return;
     }
 

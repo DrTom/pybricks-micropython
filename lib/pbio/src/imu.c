@@ -19,6 +19,7 @@
 
 static pbdrv_imu_dev_t *imu_dev;
 static pbdrv_imu_config_t *imu_config;
+static uint32_t samples_count = 0;  
 
 // Cached sensor values that can be read at any time without polling again.
 static pbio_geometry_xyz_t angular_velocity; // deg/s, in hub frame, already adjusted for bias.
@@ -42,35 +43,21 @@ static void pbio_imu_handle_frame_data_func(int16_t *data) {
     }
 }
 
-// This counter is a measure for calibration accuracy, roughly equivalent
-// to the accumulative number of seconds it has been stationary in total.
-static uint32_t stationary_counter = 0;
-static uint32_t stationary_time_last;
 
 /*
  * Tests if the imu is ready for use in a user program.
  *
- * @return    True if it has been stationary at least once in the last 10 minutes.
 */
 bool pbio_imu_is_ready(void) {
-    return stationary_counter > 0 && pbdrv_clock_get_ms() - stationary_time_last < 10 * 60 * 1000;
+    return samples_count >= (uint32_t) imu_config->stationary_min_samples;
 }
 
 // Called by driver to process unfiltered gyro and accelerometer data recorded while stationary.
 static void pbio_imu_handle_stationary_data_func(const int32_t *gyro_data_sum, const int32_t *accel_data_sum, uint32_t num_samples) {
 
-    // If the IMU calibration hasn't been updated in a long time, reset the
-    // stationary counter so that the calibration values get a large weight.
-    if (!pbio_imu_is_ready()) {
-        stationary_counter = 0;
-    }
+    // 1 if we have no samples yet, 0.5 if we already have some
+    float weight = samples_count > 0  ? 0.5f : 1.0f;
 
-    stationary_time_last = pbdrv_clock_get_ms();
-    stationary_counter++;
-
-    // The relative weight of the new data in order to build a long term
-    // average of the data without maintaining a data buffer.
-    float weight = stationary_counter >= 20 ? 0.05f : 1.0f / stationary_counter;
 
     for (uint8_t i = 0; i < PBIO_ARRAY_SIZE(gyro_bias.values); i++) {
         // Average gyro rate while stationary, indicating current bias.
@@ -79,7 +66,30 @@ static void pbio_imu_handle_stationary_data_func(const int32_t *gyro_data_sum, c
         // Update bias at decreasing rate.
         gyro_bias.values[i] = gyro_bias.values[i] * (1.0f - weight) + weight * average_now;
     }
+
+    samples_count += num_samples;
+
 }
+
+
+
+/*  gyro_bias access */
+
+void pbio_imu_gyro_bias_reset(void) {
+    for (uint8_t i = 0; i < PBIO_ARRAY_SIZE(gyro_bias.values); i++) {
+        gyro_bias.values[i] = 0.0f;
+    }
+    samples_count = 0;
+}   
+
+void pbio_imu_gyro_bias_get(pbio_geometry_xyz_t *values, uint32_t *samples_c) {
+    memcpy(values, &gyro_bias, sizeof(gyro_bias));
+    *samples_c= samples_count;
+}
+
+
+
+
 
 /**
  * Initializes global imu module.
@@ -144,6 +154,11 @@ bool pbio_imu_is_stationary(void) {
 void pbio_imu_set_stationary_thresholds(float angular_velocity, float acceleration) {
     imu_config->gyro_stationary_threshold = pbio_int_math_bind(angular_velocity / imu_config->gyro_scale, 1, INT16_MAX);
     imu_config->accel_stationary_threshold = pbio_int_math_bind(acceleration / imu_config->accel_scale, 1, INT16_MAX);
+}
+
+
+void pbio_imu_set_stationary_min_samples(uint16_t stationary_min_samples) {
+    imu_config->stationary_min_samples = stationary_min_samples;
 }
 
 /**
