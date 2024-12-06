@@ -36,6 +36,9 @@ static pbdrv_imu_dev_t *imu_dev;
  */
 static pbdrv_imu_config_t *imu_config;
 
+static uint32_t samples_count = 0;
+
+
 /**
  * Uncalibrated angular velocity in the hub frame.
  *
@@ -358,18 +361,13 @@ static void pbio_imu_handle_frame_data_func(int16_t *data) {
     pbio_geometry_quaternion_normalize(&quaternion);
 }
 
-// This counter is a measure for calibration accuracy, roughly equivalent
-// to the accumulative number of seconds it has been stationary in total.
-static uint32_t stationary_counter = 0;
-static uint32_t stationary_time_last;
 
 /*
  * Tests if the imu is ready for use in a user program.
  *
- * @return    True if it has been stationary at least once in the last 10 minutes.
 */
 bool pbio_imu_is_ready(void) {
-    return stationary_counter > 0 && pbdrv_clock_get_ms() - stationary_time_last < 10 * 60 * 1000;
+    return samples_count >= (uint32_t) imu_config->stationary_min_samples;
 }
 
 // Called by driver to process unfiltered gyro and accelerometer data recorded while stationary.
@@ -380,19 +378,12 @@ static void pbio_imu_handle_stationary_data_func(const int32_t *gyro_data_sum, c
         return;
     }
 
-    // If the IMU calibration hasn't been updated in a long time, reset the
-    // stationary counter so that the calibration values get a large weight.
-    if (!pbio_imu_is_ready()) {
-        stationary_counter = 0;
+    float weight = (float)num_samples / (float)(samples_count + num_samples);
+    if (weight < 0.1f)
+    {
+       weight = 0.1f;
     }
-
-    stationary_time_last = pbdrv_clock_get_ms();
-    stationary_counter++;
-
-    // The relative weight of the new data in order to build a long term
-    // average of the data without maintaining a data buffer.
-    float weight = stationary_counter >= 20 ? 0.05f : 1.0f / stationary_counter;
-
+    
     for (uint8_t i = 0; i < PBIO_ARRAY_SIZE(gyro_bias.values); i++) {
         // Average gyro rate while stationary, indicating current bias.
         float average_now = gyro_data_sum[i] * imu_config->gyro_scale / num_samples;
@@ -405,12 +396,34 @@ static void pbio_imu_handle_stationary_data_func(const int32_t *gyro_data_sum, c
     // This ensures a better starting point for the next boot. We do this only
     // once to avoid unnecessary writes on every shutdown. It can be further
     // refined with a calibration routine performed by the user.
-    if (persistent_settings && !(persistent_settings->flags & PBIO_IMU_SETTINGS_FLAGS_GYRO_BIAS_INITIAL_SET) && stationary_counter > 2) {
+    if (persistent_settings && !(persistent_settings->flags & PBIO_IMU_SETTINGS_FLAGS_GYRO_BIAS_INITIAL_SET) && num_samples >= imu_config->stationary_min_samples) {
         persistent_settings->angular_velocity_bias_start = gyro_bias;
         persistent_settings->flags |= PBIO_IMU_SETTINGS_FLAGS_GYRO_BIAS_INITIAL_SET;
         pbsys_storage_request_write();
     }
+
+    samples_count += num_samples;
+
 }
+
+
+
+/*  gyro_bias access */
+
+void pbio_imu_gyro_bias_reset(void) {
+    // setting samples_count to 0 will cause the current gyro_bias to be
+    // replaced entirely by the next stationary data
+    samples_count = 0;
+}
+
+void pbio_imu_gyro_bias_get(pbio_geometry_xyz_t *values, uint32_t *samples_c) {
+    memcpy(values, &gyro_bias, sizeof(gyro_bias));
+    *samples_c= samples_count;
+}
+
+
+
+
 
 /**
  * Initializes global imu module.
@@ -453,7 +466,7 @@ pbio_error_t pbio_imu_set_base_orientation(pbio_geometry_xyz_t *front_side_axis,
  * @return    True if it has been stationary for about a second, false if moving.
  */
 bool pbio_imu_is_stationary(void) {
-    return pbdrv_imu_is_stationary(imu_dev) && pbio_dcmotor_all_coasting();
+    return pbdrv_imu_is_stationary(imu_dev);
 }
 
 /**
@@ -539,6 +552,11 @@ pbio_error_t pbio_imu_set_settings(pbio_imu_persistent_settings_t *new_settings)
     pbio_imu_apply_pbdrv_settings(persistent_settings);
 
     return PBIO_SUCCESS;
+}
+
+
+void pbio_imu_set_stationary_min_samples(uint16_t stationary_min_samples) {
+    imu_config->stationary_min_samples = stationary_min_samples;
 }
 
 /**
