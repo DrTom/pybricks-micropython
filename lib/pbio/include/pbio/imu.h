@@ -136,6 +136,15 @@ void pbio_imu_get_heading_scaled(pbio_imu_heading_type_t type, pbio_angle_t *hea
 
 void pbio_orientation_imu_get_orientation(pbio_geometry_matrix_3x3_t *rotation);
 
+
+void pbio_imu_set_stationary_min_samples(uint16_t pbio_imu_set_stationary_min_samples);
+
+void pbio_imu_gyro_bias_get(pbio_geometry_xyz_t *values, uint32_t *samples_count);
+
+void pbio_imu_gyro_bias_reset(void);
+
+
+
 #else // PBIO_CONFIG_IMU
 
 static inline void pbio_imu_init(void) {
@@ -165,6 +174,15 @@ static inline pbio_error_t pbio_imu_get_settings(pbio_imu_persistent_settings_t 
 
 static inline pbio_error_t pbio_imu_set_settings(pbio_imu_persistent_settings_t *new_settings) {
     return PBIO_ERROR_NOT_SUPPORTED;
+}
+
+static inline void pbio_imu_set_stationary_min_samples(uint16_t stationary_min_samples) {
+}
+
+static inline void pbio_imu_gyro_bias_get(pbio_geometry_xyz_t *values, uint32_t *samples_count) {
+}
+
+static inline void pbio_imu_gyro_bias_reset(void) {
 }
 
 static inline void pbio_imu_get_angular_velocity(pbio_geometry_xyz_t *values, bool calibrated) {
