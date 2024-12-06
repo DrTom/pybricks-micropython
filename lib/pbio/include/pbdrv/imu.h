@@ -34,6 +34,9 @@ typedef struct {
     int16_t gyro_stationary_threshold;
     /** Acceleration threshold below which the IMU is considered stationary, in raw units. */
     int16_t accel_stationary_threshold;
+    /** Min number of samples until imu is condidered stationary */
+    uint16_t stationary_min_samples;
+
 } pbdrv_imu_config_t;
 
 #if PBDRV_CONFIG_IMU
