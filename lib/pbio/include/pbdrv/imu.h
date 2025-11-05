@@ -36,6 +36,8 @@ typedef struct {
     int16_t accel_stationary_threshold;
     /** Min number of samples until imu is condidered stationary */
     uint16_t stationary_min_samples;
+    //** Max count of samples: controls the weight of new samples when setting the bias */
+    uint32_t samples_count_max;
 
 } pbdrv_imu_config_t;
 

@@ -379,10 +379,6 @@ static void pbio_imu_handle_stationary_data_func(const int32_t *gyro_data_sum, c
     }
 
     float weight = (float)num_samples / (float)(samples_count + num_samples);
-    if (weight < 0.1f)
-    {
-       weight = 0.1f;
-    }
     
     for (uint8_t i = 0; i < PBIO_ARRAY_SIZE(gyro_bias.values); i++) {
         // Average gyro rate while stationary, indicating current bias.
@@ -403,6 +399,9 @@ static void pbio_imu_handle_stationary_data_func(const int32_t *gyro_data_sum, c
     }
 
     samples_count += num_samples;
+    if (samples_count > imu_config->samples_count_max)  { 
+        samples_count = imu_config->samples_count_max;
+    }
 
 }
 
@@ -567,6 +566,10 @@ pbio_error_t pbio_imu_set_settings(pbio_imu_persistent_settings_t *new_settings)
 
 void pbio_imu_set_stationary_min_samples(uint16_t stationary_min_samples) {
     imu_config->stationary_min_samples = stationary_min_samples;
+}
+
+void pbio_imu_set_samples_count_max(uint16_t samples_count_max) {
+    imu_config->samples_count_max = samples_count_max;
 }
 
 /**

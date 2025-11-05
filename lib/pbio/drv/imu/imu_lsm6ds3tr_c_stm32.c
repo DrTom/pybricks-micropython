@@ -226,7 +226,8 @@ static pbio_error_t pbdrv_imu_lsm6ds3tr_c_stm32_init(pbio_os_state_t *state) {
     imu_dev->config.gyro_stationary_threshold = 0;
     imu_dev->config.accel_stationary_threshold = 0;
 
-    imu_dev->config.stationary_min_samples = LSM6DS3TR_INITIAL_DATA_RATE ; 
+    imu_dev->config.stationary_min_samples = LSM6DS3TR_INITIAL_DATA_RATE; 
+    imu_dev->config.samples_count_max = LSM6DS3TR_INITIAL_DATA_RATE * 10;
 
     // Configure INT1 to trigger when new gyro data is ready.
     PBIO_OS_AWAIT(state, &sub, lsm6ds3tr_c_pin_int1_route_set(&sub, ctx, (lsm6ds3tr_c_int1_route_t) {
