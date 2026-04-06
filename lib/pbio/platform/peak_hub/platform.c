@@ -46,6 +46,7 @@ static void configure_gpio_for_uart(void) {
     GPIOB->MODER |=  ((2u << (14 * 2)) | (2u << (15 * 2)));
     GPIOB->OSPEEDR |= (3u << (14 * 2)) | (3u << (15 * 2));
     GPIOB->PUPDR &= ~((3u << (14 * 2)) | (3u << (15 * 2)));
+    GPIOB->PUPDR |=  (1u << (15 * 2));
     GPIOB->AFR[1] &= ~((0xFu << ((14 - 8) * 4)) | (0xFu << ((15 - 8) * 4)));
     GPIOB->AFR[1] |=  ((4u << ((14 - 8) * 4)) | (4u << ((15 - 8) * 4)));
 
@@ -54,6 +55,7 @@ static void configure_gpio_for_uart(void) {
     GPIOD->MODER |=  ((2u << (5 * 2)) | (2u << (6 * 2)));
     GPIOD->OSPEEDR |= (3u << (5 * 2)) | (3u << (6 * 2));
     GPIOD->PUPDR &= ~((3u << (5 * 2)) | (3u << (6 * 2)));
+    GPIOD->PUPDR |=  (1u << (6 * 2));
     GPIOD->AFR[0] &= ~((0xFu << (5 * 4)) | (0xFu << (6 * 4)));
     GPIOD->AFR[0] |=  ((7u << (5 * 4)) | (7u << (6 * 4)));
 }
@@ -66,31 +68,6 @@ static void configure_heartbeat_led(void) {
     GPIOE->OSPEEDR |= (3u << (3 * 2));
     GPIOE->PUPDR &= ~(3u << (3 * 2));
     GPIOE->BSRR = (1u << (3 + 16));
-}
-
-static void led_startup_blink(void) {
-    // Early bring-up indicator independent of SysTick.
-    for (int i = 0; i < 4; i++) {
-        GPIOE->ODR ^= (1u << 3);
-        for (volatile uint32_t d = 0; d < 3000000; d++) {
-        }
-    }
-}
-
-static void led_fault_blink(uint32_t on, uint32_t off) {
-    while (1) {
-        GPIOE->BSRR = (1u << 3);
-        for (volatile uint32_t d = 0; d < on; d++) {
-        }
-        GPIOE->BSRR = (1u << (3 + 16));
-        for (volatile uint32_t d = 0; d < off; d++) {
-        }
-    }
-}
-
-void HardFault_Handler(void) {
-    // Fast blink indicates crash/fault after early boot.
-    led_fault_blink(500000, 250000);
 }
 
 void SystemInit(void) {
@@ -113,7 +90,6 @@ void SystemInit(void) {
 
     configure_gpio_for_uart();
     configure_heartbeat_led();
-    led_startup_blink();
 
     // 1 ms system tick for pbdrv_clock_stm32.
     SysTick_Config(PBDRV_CONFIG_SYS_CLOCK_RATE / 1000);
