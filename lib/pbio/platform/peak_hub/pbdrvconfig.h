@@ -12,6 +12,7 @@
 
 #define PBDRV_CONFIG_CLOCK                          (1)
 #define PBDRV_CONFIG_CLOCK_STM32                    (1)
+#define PBDRV_CONFIG_CLOCK_STM32_HEARTBEAT_LED      (1)
 
 #define PBDRV_CONFIG_COUNTER                        (0)
 

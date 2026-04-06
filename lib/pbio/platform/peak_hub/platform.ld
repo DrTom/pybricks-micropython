@@ -9,5 +9,5 @@ MEMORY
 _minimal_stack_size = 8K;
 
 /* Used when PBSYS_CONFIG_STORAGE is disabled. */
-pbsys_storage_heap_start = ORIGIN(RAM);
-pbsys_storage_heap_end = ORIGIN(RAM) + LENGTH(RAM);
+pbsys_storage_heap_start = _ebss;
+pbsys_storage_heap_end = pbdrv_stack_end - _minimal_stack_size;

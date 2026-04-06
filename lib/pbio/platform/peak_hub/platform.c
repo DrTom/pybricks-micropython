@@ -58,6 +58,41 @@ static void configure_gpio_for_uart(void) {
     GPIOD->AFR[0] |=  ((7u << (5 * 4)) | (7u << (6 * 4)));
 }
 
+static void configure_heartbeat_led(void) {
+    // WeAct Mini H7 user LED is on PE3.
+    GPIOE->MODER &= ~(3u << (3 * 2));
+    GPIOE->MODER |=  (1u << (3 * 2));
+    GPIOE->OTYPER &= ~(1u << 3);
+    GPIOE->OSPEEDR |= (3u << (3 * 2));
+    GPIOE->PUPDR &= ~(3u << (3 * 2));
+    GPIOE->BSRR = (1u << (3 + 16));
+}
+
+static void led_startup_blink(void) {
+    // Early bring-up indicator independent of SysTick.
+    for (int i = 0; i < 4; i++) {
+        GPIOE->ODR ^= (1u << 3);
+        for (volatile uint32_t d = 0; d < 3000000; d++) {
+        }
+    }
+}
+
+static void led_fault_blink(uint32_t on, uint32_t off) {
+    while (1) {
+        GPIOE->BSRR = (1u << 3);
+        for (volatile uint32_t d = 0; d < on; d++) {
+        }
+        GPIOE->BSRR = (1u << (3 + 16));
+        for (volatile uint32_t d = 0; d < off; d++) {
+        }
+    }
+}
+
+void HardFault_Handler(void) {
+    // Fast blink indicates crash/fault after early boot.
+    led_fault_blink(500000, 250000);
+}
+
 void SystemInit(void) {
     #if (__FPU_PRESENT == 1) && (__FPU_USED == 1)
     SCB->CPACR |= ((3UL << 10U * 2U) | (3UL << 11U * 2U));
@@ -72,12 +107,17 @@ void SystemInit(void) {
     SystemCoreClock = PBDRV_CONFIG_SYS_CLOCK_RATE;
 
     // Enable clocks for GPIO banks and UART peripherals used in phase 1.
-    RCC->AHB4ENR |= RCC_AHB4ENR_GPIOBEN | RCC_AHB4ENR_GPIODEN;
+    RCC->AHB4ENR |= RCC_AHB4ENR_GPIOBEN | RCC_AHB4ENR_GPIODEN | RCC_AHB4ENR_GPIOEEN;
     RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
     RCC->APB1LENR |= RCC_APB1LENR_USART2EN;
 
     configure_gpio_for_uart();
+    configure_heartbeat_led();
+    led_startup_blink();
 
     // 1 ms system tick for pbdrv_clock_stm32.
     SysTick_Config(PBDRV_CONFIG_SYS_CLOCK_RATE / 1000);
+
+    // Ensure interrupts are enabled for SysTick heartbeat.
+    __enable_irq();
 }

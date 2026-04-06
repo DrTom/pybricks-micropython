@@ -74,6 +74,13 @@ void pbdrv_clock_busy_delay_us(uint32_t us) {
 void SysTick_Handler(void) {
     pbdrv_clock_ticks++;
 
+#if defined(PBDRV_CONFIG_CLOCK_STM32_HEARTBEAT_LED) && PBDRV_CONFIG_CLOCK_STM32_HEARTBEAT_LED
+    // WeAct Mini H7 prototype heartbeat on PE3.
+    if ((pbdrv_clock_ticks % 500) == 0) {
+        GPIOE->ODR ^= (1 << 3);
+    }
+#endif
+
     // Read the systick control register. This has the side effect of clearing
     // the COUNTFLAG bit, which makes the logic in pbdrv_clock_get_time
     // work properly.
