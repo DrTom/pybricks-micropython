@@ -193,6 +193,7 @@ CROSS_COMPILE ?= arm-none-eabi-
 ifeq ($(PB_MCU_FAMILY),STM32)
 CFLAGS_MCU_F0 = -mthumb -mtune=cortex-m0 -mcpu=cortex-m0 -msoft-float
 CFLAGS_MCU_F4 = -mthumb -mtune=cortex-m4 -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+CFLAGS_MCU_H7 = -mthumb -mtune=cortex-m7 -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard
 CFLAGS_MCU_L4 = -mthumb -mtune=cortex-m4 -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 CFLAGS_MCU = $(CFLAGS_MCU_$(PB_MCU_SERIES))
 else
@@ -227,7 +228,7 @@ endif
 
 SUPPORTS_HARDWARE_FP_SINGLE = 0
 ifeq ($(PB_MCU_FAMILY),STM32)
-ifeq ($(PB_MCU_SERIES),$(filter $(PB_MCU_SERIES),F4 L4))
+ifeq ($(PB_MCU_SERIES),$(filter $(PB_MCU_SERIES),F4 H7 L4))
 SUPPORTS_HARDWARE_FP_SINGLE = 1
 endif
 endif

@@ -48,6 +48,7 @@ HUB_INFO = {
     "move_hub": {"device-id": 0x40, "checksum-type": "sum"},
     "city_hub": {"device-id": 0x41, "checksum-type": "sum"},
     "technic_hub": {"device-id": 0x80, "checksum-type": "sum"},
+    "peak_hub": {"device-id": 0x80, "checksum-type": "sum"},
     "prime_hub": {"device-id": 0x81, "checksum-type": "crc32"},
     "essential_hub": {"device-id": 0x83, "checksum-type": "crc32"},
     "rcx": {"device-id": 0xE0, "checksum-type": "none"},
@@ -128,8 +129,8 @@ def generate(
             exit(1)
 
         if name_start is None:
-            print("Failed to find '.name' start address", file=sys.stderr)
-            exit(1)
+            name_start = flash_origin
+            name_size = 0
 
         if user_start is None:
             print("Failed to find '.user' start address", file=sys.stderr)

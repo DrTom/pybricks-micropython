@@ -28,9 +28,9 @@ doc:
 clean-doc:
 	@$(MAKE) -C lib/pbio/doc clean
 
-all: movehub cityhub technichub primehub essentialhub virtualhub nxt ev3 buildhat doc 
+all: movehub cityhub technichub primehub essentialhub peakhub virtualhub nxt ev3 buildhat doc 
 
-clean-all: clean-movehub clean-cityhub clean-technichub clean-primehub clean-essentialhub clean-virtualhub clean-nxt clean-ev3 clean-buildhat clean-doc
+clean-all: clean-movehub clean-cityhub clean-technichub clean-primehub clean-essentialhub clean-peakhub clean-virtualhub clean-nxt clean-ev3 clean-buildhat clean-doc
 
 ev3: mpy-cross
 	@$(MAKE) -C bricks/ev3
@@ -73,6 +73,12 @@ essentialhub: mpy-cross
 
 clean-essentialhub: clean-mpy-cross
 	@$(MAKE) -C bricks/essentialhub clean
+
+peakhub: mpy-cross
+	@$(MAKE) -C bricks/peakhub
+
+clean-peakhub: clean-mpy-cross
+	@$(MAKE) -C bricks/peakhub clean
 
 virtualhub: mpy-cross
 	@$(MAKE) -C bricks/virtualhub CROSS_COMPILE=
