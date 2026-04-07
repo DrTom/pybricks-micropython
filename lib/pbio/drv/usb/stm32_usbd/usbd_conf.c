@@ -43,8 +43,18 @@
   ******************************************************************************
   */
 
-#include "stm32f4xx_hal.h"
+#include <pbdrv/config.h>
+#include STM32_HAL_H
 #include "usbd_core.h"
+
+#if PBDRV_CONFIG_USB_STM32H7
+extern volatile uint32_t peak_usb_debug_state;
+extern volatile uint32_t peak_usb_irq_count;
+extern volatile uint32_t peak_usb_reset_count;
+extern volatile uint32_t peak_usb_setup_count;
+extern volatile uint32_t peak_usb_ep0_open_fail_count;
+extern volatile uint32_t peak_usb_last_ep0_open_status;
+#endif
 
 /*******************************************************************************
                        LL Driver Callbacks (PCD -> USB Device Library)
@@ -56,6 +66,10 @@
   * @retval None
   */
 void HAL_PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd) {
+#if PBDRV_CONFIG_USB_STM32H7
+    peak_usb_debug_state |= 0x35;
+    peak_usb_setup_count++;
+#endif
     USBD_LL_SetupStage(hpcd->pData, (uint8_t *)hpcd->Setup);
 }
 
@@ -94,8 +108,19 @@ void HAL_PCD_SOFCallback(PCD_HandleTypeDef *hpcd) {
   * @retval None
   */
 void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd) {
+#if PBDRV_CONFIG_USB_STM32H7
+    peak_usb_debug_state |= 0x30;
+    peak_usb_reset_count++;
+#endif
     USBD_LL_SetSpeed(hpcd->pData, USBD_SPEED_FULL);
     USBD_LL_Reset(hpcd->pData);
+
+#if PBDRV_CONFIG_USB_STM32H7
+    // Re-enable RXFLVL interrupt after reset — HAL USBRST handler masks it.
+    hpcd->Instance->GINTMSK |= USB_OTG_GINTMSK_RXFLVLM;
+    // Explicitly (re)arm EP0 OUT setup reception on H7.
+    USB_EP0_OutStart(hpcd->Instance, (uint8_t)hpcd->Init.dma_enable, (uint8_t *)hpcd->Setup);
+#endif
 }
 
 /**
@@ -142,6 +167,9 @@ void HAL_PCD_ISOINIncompleteCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum) {
   * @retval None
   */
 void HAL_PCD_ConnectCallback(PCD_HandleTypeDef *hpcd) {
+#if PBDRV_CONFIG_USB_STM32H7
+    peak_usb_debug_state |= 0x31;
+#endif
     USBD_LL_DevConnected(hpcd->pData);
 }
 
@@ -151,6 +179,9 @@ void HAL_PCD_ConnectCallback(PCD_HandleTypeDef *hpcd) {
   * @retval None
   */
 void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd) {
+#if PBDRV_CONFIG_USB_STM32H7
+    peak_usb_debug_state |= 0x32;
+#endif
     USBD_LL_DevDisconnected(hpcd->pData);
 }
 
@@ -166,11 +197,19 @@ void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd) {
 USBD_StatusTypeDef  USBD_LL_Init(USBD_HandleTypeDef *pdev) {
     PCD_HandleTypeDef *hpcd = pdev->pData;
     /*Set LL Driver parameters */
+    #if PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
+    hpcd->Instance = USB_OTG_HS;
+    #else
     hpcd->Instance = USB_OTG_FS;
-    hpcd->Init.dev_endpoints = 4;
+    #endif
+    hpcd->Init.dev_endpoints = 9;
     hpcd->Init.use_dedicated_ep1 = 0;
+    hpcd->Init.ep0_mps = 0x40;
     hpcd->Init.dma_enable = 0;
     hpcd->Init.low_power_enable = 0;
+    hpcd->Init.lpm_enable = 0;
+    hpcd->Init.battery_charging_enable = 0;
+    hpcd->Init.use_external_vbus = 0;
     hpcd->Init.phy_itface = PCD_PHY_EMBEDDED;
     hpcd->Init.Sof_enable = 0;
     hpcd->Init.speed = PCD_SPEED_FULL;
@@ -179,9 +218,17 @@ USBD_StatusTypeDef  USBD_LL_Init(USBD_HandleTypeDef *pdev) {
     /*Initialize LL Driver */
     HAL_PCD_Init(hpcd);
 
-    HAL_PCDEx_SetRxFiFo(hpcd, 0x80);
-    HAL_PCDEx_SetTxFiFo(hpcd, 0, 0x40);
-    HAL_PCDEx_SetTxFiFo(hpcd, 1, 0x80);
+    // H7 USB2 OTG (HS core on FS pins) has ≥4 KB dedicated FIFO RAM.
+    // Match the ROM DFU bootloader's RX FIFO allocation (0x200 words).
+    // TX FIFOs follow immediately after RX.
+    HAL_PCDEx_SetRxFiFo(hpcd, 0x200);
+    HAL_PCDEx_SetTxFiFo(hpcd, 0, 0x40);  // EP0 IN: 64 words (256 B)
+    HAL_PCDEx_SetTxFiFo(hpcd, 1, 0x80);  // EP1 IN: 128 words (512 B)
+
+    #if PBDRV_CONFIG_USB_STM32H7
+    // Ensure RXFLVL interrupt is enabled - HAL may leave it masked.
+    hpcd->Instance->GINTMSK |= USB_OTG_GINTMSK_RXFLVLM;
+    #endif
 
     return USBD_OK;
 }
@@ -228,7 +275,18 @@ USBD_StatusTypeDef USBD_LL_OpenEP(USBD_HandleTypeDef *pdev,
     uint8_t ep_addr,
     uint8_t ep_type,
     uint16_t ep_mps) {
-    HAL_PCD_EP_Open(pdev->pData, ep_addr, ep_mps, ep_type);
+    HAL_StatusTypeDef status = HAL_PCD_EP_Open(pdev->pData, ep_addr, ep_mps, ep_type);
+
+    #if PBDRV_CONFIG_USB_STM32H7
+    if ((ep_addr & 0x7F) == 0) {
+        peak_usb_last_ep0_open_status = status;
+        if (status != HAL_OK) {
+            peak_usb_ep0_open_fail_count++;
+            peak_usb_debug_state |= 0x40;
+        }
+    }
+    #endif
+
     return USBD_OK;
 }
 

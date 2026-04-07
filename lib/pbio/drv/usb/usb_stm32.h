@@ -8,13 +8,13 @@
 
 #include <pbdrv/config.h>
 
-#if PBDRV_CONFIG_USB_STM32F4
+#if PBDRV_CONFIG_USB_STM32F4 || PBDRV_CONFIG_USB_STM32H7
 
 #include <stdbool.h>
 
 void pbdrv_usb_stm32_handle_otg_fs_irq(void);
 void pbdrv_usb_stm32_handle_vbus_irq(bool active);
 
-#endif // PBDRV_CONFIG_USB_STM32F4
+#endif // PBDRV_CONFIG_USB_STM32F4 || PBDRV_CONFIG_USB_STM32H7
 
 #endif // _INTERNAL_PBDRV_USB_STM32_H_

@@ -5,13 +5,17 @@
 
 #include <pbdrv/config.h>
 
-#if PBDRV_CONFIG_USB_STM32F4
+#if PBDRV_CONFIG_USB_STM32F4 || PBDRV_CONFIG_USB_STM32H7
 
 #include <string.h>
 #include <stdbool.h>
 
-#include <stm32f4xx_hal.h>
+#include STM32_HAL_H
+#if PBDRV_CONFIG_USB_STM32F4
 #include <stm32f4xx_hal_pcd_ex.h>
+#elif PBDRV_CONFIG_USB_STM32H7
+#include <stm32h7xx_hal_pcd_ex.h>
+#endif
 #include <usbd_core.h>
 #include <usbd_desc.h>
 #include <usbd_pybricks.h>
@@ -57,8 +61,10 @@ static pbdrv_usb_bcd_t pbdrv_usb_bcd;
  * @param [in]  pt  The protothread.
  */
 pbio_error_t pbdrv_usb_wait_until_configured(pbio_os_state_t *state) {
+    #if !PBDRV_CONFIG_USB_STM32H7
     static pbio_os_timer_t timer;
     USB_OTG_GlobalTypeDef *USBx = hpcd.Instance;
+    #endif
 
     PBIO_OS_ASYNC_BEGIN(state);
 
@@ -67,6 +73,9 @@ pbio_error_t pbdrv_usb_wait_until_configured(pbio_os_state_t *state) {
     // Wait until USB plugged in.
     PBIO_OS_AWAIT_UNTIL(state, vbus_active);
 
+    #if PBDRV_CONFIG_USB_STM32H7
+    pbdrv_usb_bcd = PBDRV_USB_BCD_STANDARD_DOWNSTREAM;
+    #else
     // Disable all other USB functions.
     HAL_PCDEx_ActivateBCD(&hpcd);
 
@@ -125,6 +134,7 @@ pbio_error_t pbdrv_usb_wait_until_configured(pbio_os_state_t *state) {
         pbio_os_request_poll();
         return PBIO_ERROR_AGAIN;
     }
+    #endif
 
     PBIO_OS_ASYNC_END(PBIO_SUCCESS);
 }
@@ -368,6 +378,11 @@ void pbdrv_usb_init_device(void) {
     USBD_RegisterClass(&husbd, &USBD_Pybricks_ClassDriver);
     USBD_Pybricks_RegisterInterface(&husbd, &USBD_Pybricks_fops);
     USBD_Start(&husbd);
+
+    #if PBDRV_CONFIG_USB_STM32H7
+    // Force connect in case HAL left soft-disconnect asserted.
+    USB_DevConnect(hpcd.Instance);
+    #endif
     #endif
 }
 
@@ -376,4 +391,4 @@ void pbdrv_usb_deinit_device(void) {
     USBD_DeInit(&husbd);
 }
 
-#endif // PBDRV_CONFIG_USB_STM32F4
+#endif // PBDRV_CONFIG_USB_STM32F4 || PBDRV_CONFIG_USB_STM32H7

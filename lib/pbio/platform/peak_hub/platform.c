@@ -4,6 +4,13 @@
 
 #include <pbdrv/uart.h>
 
+#if PBDRV_CONFIG_USB_STM32H7
+#include <pbdrv/usb.h>
+#include <lego/usb.h>
+#include STM32_HAL_H
+#include "../../drv/usb/usb_stm32.h"
+#endif
+
 #if PBDRV_CONFIG_UART_STM32H7_LL_DMA
 #include <drv/uart/uart_stm32h7_ll_dma.h>
 #include <stm32h7xx_ll_dma.h>
@@ -14,6 +21,25 @@
 #endif
 
 #include <stm32h743xx.h>
+
+#if PBDRV_CONFIG_USB_STM32H7
+volatile uint32_t peak_usb_debug_state;
+volatile uint32_t peak_usb_irq_count;
+volatile uint32_t peak_usb_reset_count;
+volatile uint32_t peak_usb_setup_count;
+volatile uint32_t peak_usb_ep0_open_fail_count;
+volatile uint32_t peak_usb_last_ep0_open_status;
+volatile uint32_t peak_usb_irq_usbrst_count;
+volatile uint32_t peak_usb_irq_enumdne_count;
+volatile uint32_t peak_usb_irq_rxflvl_count;
+volatile uint32_t peak_usb_irq_oepint_count;
+volatile uint32_t peak_usb_doepint_stup_count;
+volatile uint32_t peak_usb_irq_sof_count;
+volatile uint32_t peak_usb_last_gintsts;
+volatile uint32_t peak_usb_last_gintmsk;
+volatile uint32_t peak_usb_last_daint;
+volatile uint32_t peak_usb_last_doepint0;
+#endif
 
 enum {
     UART_PORT_A,
@@ -153,6 +179,159 @@ void USART1_IRQHandler(void) {
 #endif
 }
 
+#if PBDRV_CONFIG_USB_STM32H7
+void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd) {
+    GPIO_InitTypeDef gpio_init;
+
+    peak_usb_debug_state |= 0x10;
+
+    #if PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
+    if (hpcd->Instance != USB_OTG_HS) {
+        return;
+    }
+
+    gpio_init.Pin = GPIO_PIN_14 | GPIO_PIN_15;
+    gpio_init.Mode = GPIO_MODE_AF_PP;
+    gpio_init.Pull = GPIO_NOPULL;
+    gpio_init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpio_init.Alternate = GPIO_AF12_OTG2_FS;
+    HAL_GPIO_Init(GPIOB, &gpio_init);
+
+    __HAL_RCC_USB1_OTG_HS_CLK_ENABLE();
+    #else
+    if (hpcd->Instance != USB_OTG_FS) {
+        return;
+    }
+
+    gpio_init.Pin = GPIO_PIN_11 | GPIO_PIN_12;
+    gpio_init.Mode = GPIO_MODE_AF_PP;
+    gpio_init.Pull = GPIO_NOPULL;
+    gpio_init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    #if defined(USB2_OTG_FS)
+    gpio_init.Alternate = GPIO_AF10_OTG2_FS;
+    #else
+    gpio_init.Alternate = GPIO_AF10_OTG1_FS;
+    #endif
+    HAL_GPIO_Init(GPIOA, &gpio_init);
+    peak_usb_debug_state |= 0x11;
+
+    #if defined(USB2_OTG_FS)
+    __HAL_RCC_USB2_OTG_FS_CLK_ENABLE();
+    #else
+    __HAL_RCC_USB1_OTG_HS_CLK_ENABLE();
+    #endif
+    #endif
+
+    // Keep USB2 OTG FS clock running during sleep (WFI), otherwise the main
+    // loop's wait-for-interrupt will gate the AHB1 clock and drop USB traffic.
+    __HAL_RCC_USB2_OTG_FS_CLK_SLEEP_ENABLE();
+    __HAL_RCC_USB2_OTG_FS_ULPI_CLK_SLEEP_DISABLE();
+    peak_usb_debug_state |= 0x12;
+
+    #if PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
+    HAL_NVIC_SetPriority(OTG_HS_EP1_OUT_IRQn, 6, 0);
+    HAL_NVIC_EnableIRQ(OTG_HS_EP1_OUT_IRQn);
+    HAL_NVIC_SetPriority(OTG_HS_EP1_IN_IRQn, 6, 0);
+    HAL_NVIC_EnableIRQ(OTG_HS_EP1_IN_IRQn);
+    HAL_NVIC_SetPriority(OTG_HS_IRQn, 6, 0);
+    HAL_NVIC_EnableIRQ(OTG_HS_IRQn);
+    #else
+    HAL_NVIC_SetPriority(OTG_FS_EP1_OUT_IRQn, 6, 0);
+    HAL_NVIC_EnableIRQ(OTG_FS_EP1_OUT_IRQn);
+    HAL_NVIC_SetPriority(OTG_FS_EP1_IN_IRQn, 6, 0);
+    HAL_NVIC_EnableIRQ(OTG_FS_EP1_IN_IRQn);
+    HAL_NVIC_SetPriority(OTG_FS_IRQn, 6, 0);
+    HAL_NVIC_EnableIRQ(OTG_FS_IRQn);
+    #endif
+    pbdrv_usb_stm32_handle_vbus_irq(true);
+    peak_usb_debug_state |= 0x13;
+}
+
+void HAL_PCD_MspDeInit(PCD_HandleTypeDef *hpcd) {
+    #if PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
+    if (hpcd->Instance != USB_OTG_HS) {
+        return;
+    }
+
+    HAL_NVIC_DisableIRQ(OTG_HS_IRQn);
+    #else
+    if (hpcd->Instance != USB_OTG_FS) {
+        return;
+    }
+
+    HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
+    #endif
+}
+
+void OTG_FS_IRQHandler(void) {
+    USB_OTG_DeviceTypeDef *usb_dev = (USB_OTG_DeviceTypeDef *)(USB_OTG_FS_PERIPH_BASE + USB_OTG_DEVICE_BASE);
+    uint32_t gint = USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK;
+
+    peak_usb_last_gintsts = USB_OTG_FS->GINTSTS;
+    peak_usb_last_gintmsk = USB_OTG_FS->GINTMSK;
+    peak_usb_last_daint = usb_dev->DAINT;
+
+    if (gint & USB_OTG_GINTSTS_USBRST) {
+        peak_usb_irq_usbrst_count++;
+    }
+    if (gint & USB_OTG_GINTSTS_ENUMDNE) {
+        peak_usb_irq_enumdne_count++;
+    }
+    if (gint & USB_OTG_GINTSTS_SOF) {
+        peak_usb_irq_sof_count++;
+    }
+    if (gint & USB_OTG_GINTSTS_RXFLVL) {
+        peak_usb_irq_rxflvl_count++;
+    }
+    if (gint & USB_OTG_GINTSTS_OEPINT) {
+        USB_OTG_OUTEndpointTypeDef *out_ep0 = (USB_OTG_OUTEndpointTypeDef *)(USB_OTG_FS_PERIPH_BASE + USB_OTG_OUT_ENDPOINT_BASE);
+        peak_usb_irq_oepint_count++;
+        peak_usb_last_doepint0 = out_ep0->DOEPINT;
+        if (out_ep0->DOEPINT & USB_OTG_DOEPINT_STUP) {
+            peak_usb_doepint_stup_count++;
+        }
+    }
+
+    peak_usb_debug_state |= 0x20;
+    peak_usb_irq_count++;
+    pbdrv_usb_stm32_handle_otg_fs_irq();
+}
+
+void OTG_FS_EP1_OUT_IRQHandler(void) {
+    peak_usb_debug_state |= 0x21;
+    peak_usb_irq_count++;
+    pbdrv_usb_stm32_handle_otg_fs_irq();
+}
+
+void OTG_FS_EP1_IN_IRQHandler(void) {
+    peak_usb_debug_state |= 0x22;
+    peak_usb_irq_count++;
+    pbdrv_usb_stm32_handle_otg_fs_irq();
+}
+
+void OTG_HS_IRQHandler(void) {
+    pbdrv_usb_stm32_handle_otg_fs_irq();
+}
+
+void OTG_HS_EP1_OUT_IRQHandler(void) {
+    pbdrv_usb_stm32_handle_otg_fs_irq();
+}
+
+void OTG_HS_EP1_IN_IRQHandler(void) {
+    pbdrv_usb_stm32_handle_otg_fs_irq();
+}
+
+void EXTI9_5_IRQHandler(void) {
+    HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_9);
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t pin) {
+    if (pin == GPIO_PIN_9) {
+        pbdrv_usb_stm32_handle_vbus_irq(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9));
+    }
+}
+#endif
+
 #if PBDRV_CONFIG_UART_STM32H7_LL_DMA
 void USART2_IRQHandler(void) {
     pbdrv_uart_stm32h7_ll_dma_handle_uart_irq(UART_PORT_B);
@@ -254,6 +433,8 @@ void DMA2_Stream7_IRQHandler(void) {
 #endif
 
 uint32_t SystemCoreClock = PBDRV_CONFIG_SYS_CLOCK_RATE;
+uint32_t SystemD2Clock = PBDRV_CONFIG_SYS_CLOCK_RATE;
+const uint8_t D1CorePrescTable[16] = {0, 0, 0, 0, 1, 2, 3, 4, 1, 2, 3, 4, 6, 7, 8, 9};
 
 __attribute__((section(".name"), used))
 const char pbdrv_hub_name[] = "Peak";
@@ -261,6 +442,7 @@ const char pbdrv_hub_name[] = "Peak";
 extern uint32_t *_fw_isr_vector_src;
 
 static void configure_gpio_for_uart(void) {
+    #if !PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
     // PB14/PB15 -> USART1 TX/RX (AF4)
     GPIOB->MODER &= ~((3u << (14 * 2)) | (3u << (15 * 2)));
     GPIOB->MODER |=  ((2u << (14 * 2)) | (2u << (15 * 2)));
@@ -269,6 +451,7 @@ static void configure_gpio_for_uart(void) {
     GPIOB->PUPDR |=  (1u << (15 * 2));
     GPIOB->AFR[1] &= ~((0xFu << ((14 - 8) * 4)) | (0xFu << ((15 - 8) * 4)));
     GPIOB->AFR[1] |=  ((4u << ((14 - 8) * 4)) | (4u << ((15 - 8) * 4)));
+    #endif
 
     // PD5/PD6 -> USART2 TX/RX (AF7)
     GPIOD->MODER &= ~((3u << (5 * 2)) | (3u << (6 * 2)));
@@ -360,7 +543,7 @@ void SystemInit(void) {
     SystemCoreClock = PBDRV_CONFIG_SYS_CLOCK_RATE;
 
     // Enable clocks for GPIO banks and UART peripherals used in phase 1.
-    RCC->AHB4ENR |= RCC_AHB4ENR_GPIOBEN | RCC_AHB4ENR_GPIOCEN | RCC_AHB4ENR_GPIODEN | RCC_AHB4ENR_GPIOEEN;
+    RCC->AHB4ENR |= RCC_AHB4ENR_GPIOAEN | RCC_AHB4ENR_GPIOBEN | RCC_AHB4ENR_GPIOCEN | RCC_AHB4ENR_GPIODEN | RCC_AHB4ENR_GPIOEEN;
     RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
     RCC->APB2ENR |= RCC_APB2ENR_USART6EN;
     RCC->APB1LENR |= RCC_APB1LENR_USART2EN;
@@ -369,6 +552,47 @@ void SystemInit(void) {
     RCC->APB1LENR |= RCC_APB1LENR_UART7EN | RCC_APB1LENR_UART8EN;
     RCC->AHB1ENR |= RCC_AHB1ENR_DMA1EN;
     RCC->AHB1ENR |= RCC_AHB1ENR_DMA2EN;
+    RCC->APB4ENR |= RCC_APB4ENR_SYSCFGEN;
+
+    #if PBDRV_CONFIG_USB_STM32H7
+    bool usb_clk_from_pll3 = false;
+
+    // Prefer a crystal-derived 48 MHz USB clock: HSE(25MHz) -> PLL3Q(48MHz).
+    RCC->CR |= RCC_CR_HSEON;
+    for (uint32_t i = 0; i < 1000000; i++) {
+        if (RCC->CR & RCC_CR_HSERDY) {
+            RCC->CR &= ~RCC_CR_PLL3ON;
+            while (RCC->CR & RCC_CR_PLL3RDY) {
+            }
+
+            MODIFY_REG(RCC->PLLCKSELR,
+                RCC_PLLCKSELR_PLLSRC | RCC_PLLCKSELR_DIVM3,
+                RCC_PLLCKSELR_PLLSRC_HSE | (5u << RCC_PLLCKSELR_DIVM3_Pos));
+            MODIFY_REG(RCC->PLL3DIVR,
+                RCC_PLL3DIVR_N3 | RCC_PLL3DIVR_P3 | RCC_PLL3DIVR_Q3 | RCC_PLL3DIVR_R3,
+                ((96u - 1u) << RCC_PLL3DIVR_N3_Pos)
+                | ((2u - 1u) << RCC_PLL3DIVR_P3_Pos)
+                | ((10u - 1u) << RCC_PLL3DIVR_Q3_Pos)
+                | ((2u - 1u) << RCC_PLL3DIVR_R3_Pos));
+            RCC->PLLCFGR |= RCC_PLLCFGR_DIVQ3EN;
+
+            RCC->CR |= RCC_CR_PLL3ON;
+            while (!(RCC->CR & RCC_CR_PLL3RDY)) {
+            }
+
+            MODIFY_REG(RCC->D2CCIP2R, RCC_D2CCIP2R_USBSEL, RCC_D2CCIP2R_USBSEL_1);
+            usb_clk_from_pll3 = true;
+            break;
+        }
+    }
+
+    if (!usb_clk_from_pll3) {
+        RCC->CR |= RCC_CR_HSI48ON;
+        while (!(RCC->CR & RCC_CR_HSI48RDY)) {
+        }
+        MODIFY_REG(RCC->D2CCIP2R, RCC_D2CCIP2R_USBSEL, RCC_D2CCIP2R_USBSEL);
+    }
+    #endif
 
     configure_gpio_for_uart();
     configure_heartbeat_led();
