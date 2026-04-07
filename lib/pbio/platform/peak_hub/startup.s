@@ -120,8 +120,24 @@ g_pfnVectors:
   .word USART2_IRQHandler
   .word USART3_IRQHandler
 
-  /* Reserve remaining vectors with default handler. */
-  .rept 120
+  /* IRQ 40..46 */
+  .rept 7
+  .word Default_Handler
+  .endr
+
+  /* IRQ 47 */
+  .word DMA1_Stream7_IRQHandler
+
+  /* IRQ 48..70 */
+  .rept 23
+  .word Default_Handler
+  .endr
+
+  /* IRQ 71 */
+  .word USART6_IRQHandler
+
+  /* IRQ 72..159 */
+  .rept 88
   .word Default_Handler
   .endr
 
@@ -180,6 +196,8 @@ g_pfnVectors:
   .thumb_set DMA1_Stream5_IRQHandler,Default_Handler
   .weak DMA1_Stream6_IRQHandler
   .thumb_set DMA1_Stream6_IRQHandler,Default_Handler
+  .weak DMA1_Stream7_IRQHandler
+  .thumb_set DMA1_Stream7_IRQHandler,Default_Handler
   .weak ADC_IRQHandler
   .thumb_set ADC_IRQHandler,Default_Handler
   .weak FDCAN1_IT0_IRQHandler
@@ -224,3 +242,5 @@ g_pfnVectors:
   .thumb_set USART2_IRQHandler,Default_Handler
   .weak USART3_IRQHandler
   .thumb_set USART3_IRQHandler,Default_Handler
+  .weak USART6_IRQHandler
+  .thumb_set USART6_IRQHandler,Default_Handler
