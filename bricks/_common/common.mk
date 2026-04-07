@@ -17,7 +17,7 @@ ifeq ($(PB_MCU_FAMILY),STM32)
 ifeq ($(PB_MCU_SERIES),)
 $(error "PB_MCU_SERIES is not specified - add it in <hub>/Makefile)
 else
-PB_MCU_SERIES_LCASE = $(subst F,f,$(subst L,l,$(PB_MCU_SERIES)))
+PB_MCU_SERIES_LCASE = $(subst F,f,$(subst H,h,$(subst L,l,$(PB_MCU_SERIES))))
 endif
 ifeq ($(PB_CMSIS_MCU),)
 $(error "PB_CMSIS_MCU is not specified - add it in <hub>/Makefile")

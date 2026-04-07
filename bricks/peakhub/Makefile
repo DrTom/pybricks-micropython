@@ -11,4 +11,6 @@ PB_LIB_STM32_USB_DEVICE = 0
 TEXT0_ADDR = 0x08000000
 PB_FROZEN_MODULES = 1
 
+CFLAGS_EXTRA += -I$(TOP)/lib/stm32lib/STM32H7xx_HAL_Driver/Inc
+
 include ../_common/common.mk

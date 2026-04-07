@@ -37,7 +37,9 @@
 
 #define PBDRV_CONFIG_UART                           (1)
 #define PBDRV_CONFIG_UART_DEBUG_FIRST_PORT          (0)
-#define PBDRV_CONFIG_UART_STM32H7_LL_IRQ            (1)
+#define PBDRV_CONFIG_UART_STM32H7_LL_DMA            (1)
+#define PBDRV_CONFIG_UART_STM32H7_LL_DMA_NUM_UART   (1)
+#define PBDRV_CONFIG_UART_STM32H7_LL_IRQ            (0)
 #define PBDRV_CONFIG_UART_STM32H7_LL_IRQ_NUM_UART   (2)
 
 #define PBDRV_CONFIG_USB                            (0)

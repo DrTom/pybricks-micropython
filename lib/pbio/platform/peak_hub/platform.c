@@ -4,15 +4,25 @@
 
 #include <pbdrv/uart.h>
 
+#if PBDRV_CONFIG_UART_STM32H7_LL_DMA
+#include <drv/uart/uart_stm32h7_ll_dma.h>
+#include <stm32h7xx_ll_dma.h>
+#endif
+
+#if PBDRV_CONFIG_UART_STM32H7_LL_IRQ
 #include <drv/uart/uart_stm32h7_ll_irq.h>
+#endif
 
 #include <stm32h743xx.h>
 
 enum {
     UART_PORT_A,
+#if PBDRV_CONFIG_UART_STM32H7_LL_IRQ
     UART_PORT_B,
+#endif
 };
 
+#if PBDRV_CONFIG_UART_STM32H7_LL_IRQ
 const pbdrv_uart_stm32h7_ll_irq_platform_data_t
     pbdrv_uart_stm32h7_ll_irq_platform_data[PBDRV_CONFIG_UART_STM32H7_LL_IRQ_NUM_UART] = {
     [UART_PORT_A] = {
@@ -25,13 +35,51 @@ const pbdrv_uart_stm32h7_ll_irq_platform_data_t
     },
 };
 
+#endif
+
+#if PBDRV_CONFIG_UART_STM32H7_LL_DMA
+
+const pbdrv_uart_stm32h7_ll_dma_platform_data_t
+    pbdrv_uart_stm32h7_ll_dma_platform_data[PBDRV_CONFIG_UART_STM32H7_LL_DMA_NUM_UART] = {
+    [UART_PORT_A] = {
+        .tx_dma = DMA1,
+        .tx_dma_stream = LL_DMA_STREAM_0,
+        .tx_dma_req = LL_DMAMUX1_REQ_USART1_TX,
+        .tx_dma_irq = DMA1_Stream0_IRQn,
+        .rx_dma = DMA1,
+        .rx_dma_stream = LL_DMA_STREAM_1,
+        .rx_dma_req = LL_DMAMUX1_REQ_USART1_RX,
+        .rx_dma_irq = DMA1_Stream1_IRQn,
+        .uart = USART1,
+        .uart_irq = USART1_IRQn,
+    },
+};
+
+#endif
+
 void USART1_IRQHandler(void) {
+#if PBDRV_CONFIG_UART_STM32H7_LL_DMA
+    pbdrv_uart_stm32h7_ll_dma_handle_uart_irq(UART_PORT_A);
+#elif PBDRV_CONFIG_UART_STM32H7_LL_IRQ
     pbdrv_uart_stm32h7_ll_irq_handle_irq(UART_PORT_A);
+#endif
 }
 
+#if PBDRV_CONFIG_UART_STM32H7_LL_IRQ
 void USART2_IRQHandler(void) {
     pbdrv_uart_stm32h7_ll_irq_handle_irq(UART_PORT_B);
 }
+#endif
+
+#if PBDRV_CONFIG_UART_STM32H7_LL_DMA
+void DMA1_Stream0_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_tx_dma_irq(UART_PORT_A);
+}
+
+void DMA1_Stream1_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_rx_dma_irq(UART_PORT_A);
+}
+#endif
 
 uint32_t SystemCoreClock = PBDRV_CONFIG_SYS_CLOCK_RATE;
 
@@ -87,6 +135,7 @@ void SystemInit(void) {
     RCC->AHB4ENR |= RCC_AHB4ENR_GPIOBEN | RCC_AHB4ENR_GPIODEN | RCC_AHB4ENR_GPIOEEN;
     RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
     RCC->APB1LENR |= RCC_APB1LENR_USART2EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_DMA1EN;
 
     configure_gpio_for_uart();
     configure_heartbeat_led();
