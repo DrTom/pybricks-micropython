@@ -50,7 +50,6 @@
 #define PBDRV_CONFIG_USB_MFG_STR                    LEGO_USB_MFG_STR
 #define PBDRV_CONFIG_USB_PROD_STR                   u"Hub Peak + Pybricks"
 #define PBDRV_CONFIG_USB_STM32H7                    (1)
-#define PBDRV_CONFIG_USB_STM32H7_HS_IN_FS           (0)
 #define PBDRV_CONFIG_USB_CHARGE_ONLY                (0)
 
 #define PBDRV_CONFIG_STACK                          (1)

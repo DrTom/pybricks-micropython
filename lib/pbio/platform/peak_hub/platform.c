@@ -167,20 +167,6 @@ void USART1_IRQHandler(void) {
 void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd) {
     GPIO_InitTypeDef gpio_init;
 
-    #if PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
-    if (hpcd->Instance != USB_OTG_HS) {
-        return;
-    }
-
-    gpio_init.Pin = GPIO_PIN_14 | GPIO_PIN_15;
-    gpio_init.Mode = GPIO_MODE_AF_PP;
-    gpio_init.Pull = GPIO_NOPULL;
-    gpio_init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    gpio_init.Alternate = GPIO_AF12_OTG2_FS;
-    HAL_GPIO_Init(GPIOB, &gpio_init);
-
-    __HAL_RCC_USB1_OTG_HS_CLK_ENABLE();
-    #else
     if (hpcd->Instance != USB_OTG_FS) {
         return;
     }
@@ -201,45 +187,27 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd) {
     #else
     __HAL_RCC_USB1_OTG_HS_CLK_ENABLE();
     #endif
-    #endif
 
     // Keep USB2 OTG FS clock running during sleep (WFI), otherwise the main
     // loop's wait-for-interrupt will gate the AHB1 clock and drop USB traffic.
     __HAL_RCC_USB2_OTG_FS_CLK_SLEEP_ENABLE();
     __HAL_RCC_USB2_OTG_FS_ULPI_CLK_SLEEP_DISABLE();
 
-    #if PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
-    HAL_NVIC_SetPriority(OTG_HS_EP1_OUT_IRQn, 6, 0);
-    HAL_NVIC_EnableIRQ(OTG_HS_EP1_OUT_IRQn);
-    HAL_NVIC_SetPriority(OTG_HS_EP1_IN_IRQn, 6, 0);
-    HAL_NVIC_EnableIRQ(OTG_HS_EP1_IN_IRQn);
-    HAL_NVIC_SetPriority(OTG_HS_IRQn, 6, 0);
-    HAL_NVIC_EnableIRQ(OTG_HS_IRQn);
-    #else
     HAL_NVIC_SetPriority(OTG_FS_EP1_OUT_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(OTG_FS_EP1_OUT_IRQn);
     HAL_NVIC_SetPriority(OTG_FS_EP1_IN_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(OTG_FS_EP1_IN_IRQn);
     HAL_NVIC_SetPriority(OTG_FS_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(OTG_FS_IRQn);
-    #endif
     pbdrv_usb_stm32_handle_vbus_irq(true);
 }
 
 void HAL_PCD_MspDeInit(PCD_HandleTypeDef *hpcd) {
-    #if PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
-    if (hpcd->Instance != USB_OTG_HS) {
-        return;
-    }
-
-    HAL_NVIC_DisableIRQ(OTG_HS_IRQn);
-    #else
     if (hpcd->Instance != USB_OTG_FS) {
         return;
     }
 
     HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
-    #endif
 }
 
 void OTG_FS_IRQHandler(void) {
@@ -254,27 +222,6 @@ void OTG_FS_EP1_IN_IRQHandler(void) {
     pbdrv_usb_stm32_handle_otg_fs_irq();
 }
 
-void OTG_HS_IRQHandler(void) {
-    pbdrv_usb_stm32_handle_otg_fs_irq();
-}
-
-void OTG_HS_EP1_OUT_IRQHandler(void) {
-    pbdrv_usb_stm32_handle_otg_fs_irq();
-}
-
-void OTG_HS_EP1_IN_IRQHandler(void) {
-    pbdrv_usb_stm32_handle_otg_fs_irq();
-}
-
-void EXTI9_5_IRQHandler(void) {
-    HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_9);
-}
-
-void HAL_GPIO_EXTI_Callback(uint16_t pin) {
-    if (pin == GPIO_PIN_9) {
-        pbdrv_usb_stm32_handle_vbus_irq(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9));
-    }
-}
 #endif
 
 #if PBDRV_CONFIG_UART_STM32H7_LL_DMA
@@ -387,7 +334,6 @@ const char pbdrv_hub_name[] = "Peak";
 extern uint32_t *_fw_isr_vector_src;
 
 static void configure_gpio_for_uart(void) {
-    #if !PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
     // PB14/PB15 -> USART1 TX/RX (AF4)
     GPIOB->MODER &= ~((3u << (14 * 2)) | (3u << (15 * 2)));
     GPIOB->MODER |=  ((2u << (14 * 2)) | (2u << (15 * 2)));
@@ -396,7 +342,6 @@ static void configure_gpio_for_uart(void) {
     GPIOB->PUPDR |=  (1u << (15 * 2));
     GPIOB->AFR[1] &= ~((0xFu << ((14 - 8) * 4)) | (0xFu << ((15 - 8) * 4)));
     GPIOB->AFR[1] |=  ((4u << ((14 - 8) * 4)) | (4u << ((15 - 8) * 4)));
-    #endif
 
     // PD5/PD6 -> USART2 TX/RX (AF7)
     GPIOD->MODER &= ~((3u << (5 * 2)) | (3u << (6 * 2)));

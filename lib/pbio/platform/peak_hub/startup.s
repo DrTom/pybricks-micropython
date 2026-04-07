@@ -168,25 +168,8 @@ g_pfnVectors:
   /* IRQ 71 */
   .word USART6_IRQHandler
 
-  /* IRQ 72..73 */
-  .rept 2
-  .word Default_Handler
-  .endr
-
-  /* IRQ 74 */
-  .word OTG_HS_EP1_OUT_IRQHandler
-
-  /* IRQ 75 */
-  .word OTG_HS_EP1_IN_IRQHandler
-
-  /* IRQ 76 */
-  .word Default_Handler
-
-  /* IRQ 77 */
-  .word OTG_HS_IRQHandler
-
-  /* IRQ 78..81 */
-  .rept 4
+  /* IRQ 72..81 */
+  .rept 10
   .word Default_Handler
   .endr
 
@@ -351,9 +334,3 @@ g_pfnVectors:
   .thumb_set OTG_FS_EP1_OUT_IRQHandler,Default_Handler
   .weak OTG_FS_EP1_IN_IRQHandler
   .thumb_set OTG_FS_EP1_IN_IRQHandler,Default_Handler
-  .weak OTG_HS_IRQHandler
-  .thumb_set OTG_HS_IRQHandler,Default_Handler
-  .weak OTG_HS_EP1_OUT_IRQHandler
-  .thumb_set OTG_HS_EP1_OUT_IRQHandler,Default_Handler
-  .weak OTG_HS_EP1_IN_IRQHandler
-  .thumb_set OTG_HS_EP1_IN_IRQHandler,Default_Handler

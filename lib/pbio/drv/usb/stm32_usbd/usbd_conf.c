@@ -174,11 +174,7 @@ void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd) {
 USBD_StatusTypeDef  USBD_LL_Init(USBD_HandleTypeDef *pdev) {
     PCD_HandleTypeDef *hpcd = pdev->pData;
     /*Set LL Driver parameters */
-    #if PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
-    hpcd->Instance = USB_OTG_HS;
-    #else
     hpcd->Instance = USB_OTG_FS;
-    #endif
     hpcd->Init.dev_endpoints = 9;
     hpcd->Init.use_dedicated_ep1 = 0;
     hpcd->Init.ep0_mps = 0x40;
