@@ -47,15 +47,6 @@
 #include STM32_HAL_H
 #include "usbd_core.h"
 
-#if PBDRV_CONFIG_USB_STM32H7
-extern volatile uint32_t peak_usb_debug_state;
-extern volatile uint32_t peak_usb_irq_count;
-extern volatile uint32_t peak_usb_reset_count;
-extern volatile uint32_t peak_usb_setup_count;
-extern volatile uint32_t peak_usb_ep0_open_fail_count;
-extern volatile uint32_t peak_usb_last_ep0_open_status;
-#endif
-
 /*******************************************************************************
                        LL Driver Callbacks (PCD -> USB Device Library)
 *******************************************************************************/
@@ -66,10 +57,6 @@ extern volatile uint32_t peak_usb_last_ep0_open_status;
   * @retval None
   */
 void HAL_PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd) {
-#if PBDRV_CONFIG_USB_STM32H7
-    peak_usb_debug_state |= 0x35;
-    peak_usb_setup_count++;
-#endif
     USBD_LL_SetupStage(hpcd->pData, (uint8_t *)hpcd->Setup);
 }
 
@@ -108,10 +95,6 @@ void HAL_PCD_SOFCallback(PCD_HandleTypeDef *hpcd) {
   * @retval None
   */
 void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd) {
-#if PBDRV_CONFIG_USB_STM32H7
-    peak_usb_debug_state |= 0x30;
-    peak_usb_reset_count++;
-#endif
     USBD_LL_SetSpeed(hpcd->pData, USBD_SPEED_FULL);
     USBD_LL_Reset(hpcd->pData);
 
@@ -167,9 +150,6 @@ void HAL_PCD_ISOINIncompleteCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum) {
   * @retval None
   */
 void HAL_PCD_ConnectCallback(PCD_HandleTypeDef *hpcd) {
-#if PBDRV_CONFIG_USB_STM32H7
-    peak_usb_debug_state |= 0x31;
-#endif
     USBD_LL_DevConnected(hpcd->pData);
 }
 
@@ -179,9 +159,6 @@ void HAL_PCD_ConnectCallback(PCD_HandleTypeDef *hpcd) {
   * @retval None
   */
 void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd) {
-#if PBDRV_CONFIG_USB_STM32H7
-    peak_usb_debug_state |= 0x32;
-#endif
     USBD_LL_DevDisconnected(hpcd->pData);
 }
 
@@ -275,17 +252,7 @@ USBD_StatusTypeDef USBD_LL_OpenEP(USBD_HandleTypeDef *pdev,
     uint8_t ep_addr,
     uint8_t ep_type,
     uint16_t ep_mps) {
-    HAL_StatusTypeDef status = HAL_PCD_EP_Open(pdev->pData, ep_addr, ep_mps, ep_type);
-
-    #if PBDRV_CONFIG_USB_STM32H7
-    if ((ep_addr & 0x7F) == 0) {
-        peak_usb_last_ep0_open_status = status;
-        if (status != HAL_OK) {
-            peak_usb_ep0_open_fail_count++;
-            peak_usb_debug_state |= 0x40;
-        }
-    }
-    #endif
+    HAL_PCD_EP_Open(pdev->pData, ep_addr, ep_mps, ep_type);
 
     return USBD_OK;
 }

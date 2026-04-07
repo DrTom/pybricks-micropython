@@ -23,22 +23,6 @@
 #include <stm32h743xx.h>
 
 #if PBDRV_CONFIG_USB_STM32H7
-volatile uint32_t peak_usb_debug_state;
-volatile uint32_t peak_usb_irq_count;
-volatile uint32_t peak_usb_reset_count;
-volatile uint32_t peak_usb_setup_count;
-volatile uint32_t peak_usb_ep0_open_fail_count;
-volatile uint32_t peak_usb_last_ep0_open_status;
-volatile uint32_t peak_usb_irq_usbrst_count;
-volatile uint32_t peak_usb_irq_enumdne_count;
-volatile uint32_t peak_usb_irq_rxflvl_count;
-volatile uint32_t peak_usb_irq_oepint_count;
-volatile uint32_t peak_usb_doepint_stup_count;
-volatile uint32_t peak_usb_irq_sof_count;
-volatile uint32_t peak_usb_last_gintsts;
-volatile uint32_t peak_usb_last_gintmsk;
-volatile uint32_t peak_usb_last_daint;
-volatile uint32_t peak_usb_last_doepint0;
 #endif
 
 enum {
@@ -183,8 +167,6 @@ void USART1_IRQHandler(void) {
 void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd) {
     GPIO_InitTypeDef gpio_init;
 
-    peak_usb_debug_state |= 0x10;
-
     #if PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
     if (hpcd->Instance != USB_OTG_HS) {
         return;
@@ -213,7 +195,6 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd) {
     gpio_init.Alternate = GPIO_AF10_OTG1_FS;
     #endif
     HAL_GPIO_Init(GPIOA, &gpio_init);
-    peak_usb_debug_state |= 0x11;
 
     #if defined(USB2_OTG_FS)
     __HAL_RCC_USB2_OTG_FS_CLK_ENABLE();
@@ -226,7 +207,6 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd) {
     // loop's wait-for-interrupt will gate the AHB1 clock and drop USB traffic.
     __HAL_RCC_USB2_OTG_FS_CLK_SLEEP_ENABLE();
     __HAL_RCC_USB2_OTG_FS_ULPI_CLK_SLEEP_DISABLE();
-    peak_usb_debug_state |= 0x12;
 
     #if PBDRV_CONFIG_USB_STM32H7_HS_IN_FS
     HAL_NVIC_SetPriority(OTG_HS_EP1_OUT_IRQn, 6, 0);
@@ -244,7 +224,6 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd) {
     HAL_NVIC_EnableIRQ(OTG_FS_IRQn);
     #endif
     pbdrv_usb_stm32_handle_vbus_irq(true);
-    peak_usb_debug_state |= 0x13;
 }
 
 void HAL_PCD_MspDeInit(PCD_HandleTypeDef *hpcd) {
@@ -264,48 +243,14 @@ void HAL_PCD_MspDeInit(PCD_HandleTypeDef *hpcd) {
 }
 
 void OTG_FS_IRQHandler(void) {
-    USB_OTG_DeviceTypeDef *usb_dev = (USB_OTG_DeviceTypeDef *)(USB_OTG_FS_PERIPH_BASE + USB_OTG_DEVICE_BASE);
-    uint32_t gint = USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK;
-
-    peak_usb_last_gintsts = USB_OTG_FS->GINTSTS;
-    peak_usb_last_gintmsk = USB_OTG_FS->GINTMSK;
-    peak_usb_last_daint = usb_dev->DAINT;
-
-    if (gint & USB_OTG_GINTSTS_USBRST) {
-        peak_usb_irq_usbrst_count++;
-    }
-    if (gint & USB_OTG_GINTSTS_ENUMDNE) {
-        peak_usb_irq_enumdne_count++;
-    }
-    if (gint & USB_OTG_GINTSTS_SOF) {
-        peak_usb_irq_sof_count++;
-    }
-    if (gint & USB_OTG_GINTSTS_RXFLVL) {
-        peak_usb_irq_rxflvl_count++;
-    }
-    if (gint & USB_OTG_GINTSTS_OEPINT) {
-        USB_OTG_OUTEndpointTypeDef *out_ep0 = (USB_OTG_OUTEndpointTypeDef *)(USB_OTG_FS_PERIPH_BASE + USB_OTG_OUT_ENDPOINT_BASE);
-        peak_usb_irq_oepint_count++;
-        peak_usb_last_doepint0 = out_ep0->DOEPINT;
-        if (out_ep0->DOEPINT & USB_OTG_DOEPINT_STUP) {
-            peak_usb_doepint_stup_count++;
-        }
-    }
-
-    peak_usb_debug_state |= 0x20;
-    peak_usb_irq_count++;
     pbdrv_usb_stm32_handle_otg_fs_irq();
 }
 
 void OTG_FS_EP1_OUT_IRQHandler(void) {
-    peak_usb_debug_state |= 0x21;
-    peak_usb_irq_count++;
     pbdrv_usb_stm32_handle_otg_fs_irq();
 }
 
 void OTG_FS_EP1_IN_IRQHandler(void) {
-    peak_usb_debug_state |= 0x22;
-    peak_usb_irq_count++;
     pbdrv_usb_stm32_handle_otg_fs_irq();
 }
 
