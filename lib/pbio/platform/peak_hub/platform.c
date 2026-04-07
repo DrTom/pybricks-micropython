@@ -20,6 +20,10 @@ enum {
     UART_PORT_B,
     UART_PORT_C,
     UART_PORT_D,
+    UART_PORT_E,
+    UART_PORT_F,
+    UART_PORT_G,
+    UART_PORT_H,
 };
 
 #if PBDRV_CONFIG_UART_STM32H7_LL_IRQ
@@ -89,6 +93,54 @@ const pbdrv_uart_stm32h7_ll_dma_platform_data_t
         .uart = USART6,
         .uart_irq = USART6_IRQn,
     },
+    [UART_PORT_E] = {
+        .tx_dma = DMA2,
+        .tx_dma_stream = LL_DMA_STREAM_0,
+        .tx_dma_req = LL_DMAMUX1_REQ_UART4_TX,
+        .tx_dma_irq = DMA2_Stream0_IRQn,
+        .rx_dma = DMA2,
+        .rx_dma_stream = LL_DMA_STREAM_1,
+        .rx_dma_req = LL_DMAMUX1_REQ_UART4_RX,
+        .rx_dma_irq = DMA2_Stream1_IRQn,
+        .uart = UART4,
+        .uart_irq = UART4_IRQn,
+    },
+    [UART_PORT_F] = {
+        .tx_dma = DMA2,
+        .tx_dma_stream = LL_DMA_STREAM_2,
+        .tx_dma_req = LL_DMAMUX1_REQ_UART5_TX,
+        .tx_dma_irq = DMA2_Stream2_IRQn,
+        .rx_dma = DMA2,
+        .rx_dma_stream = LL_DMA_STREAM_3,
+        .rx_dma_req = LL_DMAMUX1_REQ_UART5_RX,
+        .rx_dma_irq = DMA2_Stream3_IRQn,
+        .uart = UART5,
+        .uart_irq = UART5_IRQn,
+    },
+    [UART_PORT_G] = {
+        .tx_dma = DMA2,
+        .tx_dma_stream = LL_DMA_STREAM_4,
+        .tx_dma_req = LL_DMAMUX1_REQ_UART7_TX,
+        .tx_dma_irq = DMA2_Stream4_IRQn,
+        .rx_dma = DMA2,
+        .rx_dma_stream = LL_DMA_STREAM_5,
+        .rx_dma_req = LL_DMAMUX1_REQ_UART7_RX,
+        .rx_dma_irq = DMA2_Stream5_IRQn,
+        .uart = UART7,
+        .uart_irq = UART7_IRQn,
+    },
+    [UART_PORT_H] = {
+        .tx_dma = DMA2,
+        .tx_dma_stream = LL_DMA_STREAM_6,
+        .tx_dma_req = LL_DMAMUX1_REQ_UART8_TX,
+        .tx_dma_irq = DMA2_Stream6_IRQn,
+        .rx_dma = DMA2,
+        .rx_dma_stream = LL_DMA_STREAM_7,
+        .rx_dma_req = LL_DMAMUX1_REQ_UART8_RX,
+        .rx_dma_irq = DMA2_Stream7_IRQn,
+        .uart = UART8,
+        .uart_irq = UART8_IRQn,
+    },
 };
 
 #endif
@@ -112,6 +164,22 @@ void USART3_IRQHandler(void) {
 
 void USART6_IRQHandler(void) {
     pbdrv_uart_stm32h7_ll_dma_handle_uart_irq(UART_PORT_D);
+}
+
+void UART4_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_uart_irq(UART_PORT_E);
+}
+
+void UART5_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_uart_irq(UART_PORT_F);
+}
+
+void UART7_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_uart_irq(UART_PORT_G);
+}
+
+void UART8_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_uart_irq(UART_PORT_H);
 }
 #elif PBDRV_CONFIG_UART_STM32H7_LL_IRQ
 void USART2_IRQHandler(void) {
@@ -150,6 +218,38 @@ void DMA1_Stream6_IRQHandler(void) {
 
 void DMA1_Stream7_IRQHandler(void) {
     pbdrv_uart_stm32h7_ll_dma_handle_rx_dma_irq(UART_PORT_D);
+}
+
+void DMA2_Stream0_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_tx_dma_irq(UART_PORT_E);
+}
+
+void DMA2_Stream1_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_rx_dma_irq(UART_PORT_E);
+}
+
+void DMA2_Stream2_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_tx_dma_irq(UART_PORT_F);
+}
+
+void DMA2_Stream3_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_rx_dma_irq(UART_PORT_F);
+}
+
+void DMA2_Stream4_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_tx_dma_irq(UART_PORT_G);
+}
+
+void DMA2_Stream5_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_rx_dma_irq(UART_PORT_G);
+}
+
+void DMA2_Stream6_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_tx_dma_irq(UART_PORT_H);
+}
+
+void DMA2_Stream7_IRQHandler(void) {
+    pbdrv_uart_stm32h7_ll_dma_handle_rx_dma_irq(UART_PORT_H);
 }
 #endif
 
@@ -196,6 +296,44 @@ static void configure_gpio_for_uart(void) {
     GPIOC->PUPDR |=  (1u << (7 * 2));
     GPIOC->AFR[0] &= ~((0xFu << (6 * 4)) | (0xFu << (7 * 4)));
     GPIOC->AFR[0] |=  ((7u << (6 * 4)) | (7u << (7 * 4)));
+
+    // PC10/PC11 -> UART4 TX/RX (AF8)
+    GPIOC->MODER &= ~((3u << (10 * 2)) | (3u << (11 * 2)));
+    GPIOC->MODER |=  ((2u << (10 * 2)) | (2u << (11 * 2)));
+    GPIOC->OSPEEDR |= (3u << (10 * 2)) | (3u << (11 * 2));
+    GPIOC->PUPDR &= ~((3u << (10 * 2)) | (3u << (11 * 2)));
+    GPIOC->PUPDR |=  (1u << (11 * 2));
+    GPIOC->AFR[1] &= ~((0xFu << ((10 - 8) * 4)) | (0xFu << ((11 - 8) * 4)));
+    GPIOC->AFR[1] |=  ((8u << ((10 - 8) * 4)) | (8u << ((11 - 8) * 4)));
+
+    // PB13/PB12 -> UART5 TX/RX (AF14)
+    GPIOB->MODER &= ~((3u << (13 * 2)) | (3u << (12 * 2)));
+    GPIOB->MODER |=  ((2u << (13 * 2)) | (2u << (12 * 2)));
+    GPIOB->OSPEEDR |= (3u << (13 * 2)) | (3u << (12 * 2));
+    GPIOB->PUPDR &= ~((3u << (13 * 2)) | (3u << (12 * 2)));
+    GPIOB->PUPDR |=  (1u << (12 * 2));
+    GPIOB->AFR[1] &= ~((0xFu << ((13 - 8) * 4)) | (0xFu << ((12 - 8) * 4)));
+    GPIOB->AFR[1] |=  ((14u << ((13 - 8) * 4)) | (14u << ((12 - 8) * 4)));
+
+    // PE8/PE7 -> UART7 TX/RX (AF7)
+    GPIOE->MODER &= ~((3u << (8 * 2)) | (3u << (7 * 2)));
+    GPIOE->MODER |=  ((2u << (8 * 2)) | (2u << (7 * 2)));
+    GPIOE->OSPEEDR |= (3u << (8 * 2)) | (3u << (7 * 2));
+    GPIOE->PUPDR &= ~((3u << (8 * 2)) | (3u << (7 * 2)));
+    GPIOE->PUPDR |=  (1u << (7 * 2));
+    GPIOE->AFR[0] &= ~(0xFu << (7 * 4));
+    GPIOE->AFR[0] |=  (7u << (7 * 4));
+    GPIOE->AFR[1] &= ~(0xFu << ((8 - 8) * 4));
+    GPIOE->AFR[1] |=  (7u << ((8 - 8) * 4));
+
+    // PE1/PE0 -> UART8 TX/RX (AF8)
+    GPIOE->MODER &= ~((3u << (1 * 2)) | (3u << (0 * 2)));
+    GPIOE->MODER |=  ((2u << (1 * 2)) | (2u << (0 * 2)));
+    GPIOE->OSPEEDR |= (3u << (1 * 2)) | (3u << (0 * 2));
+    GPIOE->PUPDR &= ~((3u << (1 * 2)) | (3u << (0 * 2)));
+    GPIOE->PUPDR |=  (1u << (0 * 2));
+    GPIOE->AFR[0] &= ~((0xFu << (1 * 4)) | (0xFu << (0 * 4)));
+    GPIOE->AFR[0] |=  ((8u << (1 * 4)) | (8u << (0 * 4)));
 }
 
 static void configure_heartbeat_led(void) {
@@ -227,7 +365,10 @@ void SystemInit(void) {
     RCC->APB2ENR |= RCC_APB2ENR_USART6EN;
     RCC->APB1LENR |= RCC_APB1LENR_USART2EN;
     RCC->APB1LENR |= RCC_APB1LENR_USART3EN;
+    RCC->APB1LENR |= RCC_APB1LENR_UART4EN | RCC_APB1LENR_UART5EN;
+    RCC->APB1LENR |= RCC_APB1LENR_UART7EN | RCC_APB1LENR_UART8EN;
     RCC->AHB1ENR |= RCC_AHB1ENR_DMA1EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_DMA2EN;
 
     configure_gpio_for_uart();
     configure_heartbeat_led();

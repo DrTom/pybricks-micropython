@@ -128,16 +128,59 @@ g_pfnVectors:
   /* IRQ 47 */
   .word DMA1_Stream7_IRQHandler
 
-  /* IRQ 48..70 */
-  .rept 23
+  /* IRQ 48 */
+  .word Default_Handler
+  /* IRQ 49 */
+  .word Default_Handler
+  /* IRQ 50 */
+  .word Default_Handler
+  /* IRQ 51 */
+  .word Default_Handler
+  /* IRQ 52 */
+  .word UART4_IRQHandler
+  /* IRQ 53 */
+  .word UART5_IRQHandler
+  /* IRQ 54 */
+  .word Default_Handler
+  /* IRQ 55 */
+  .word Default_Handler
+  /* IRQ 56 */
+  .word DMA2_Stream0_IRQHandler
+  /* IRQ 57 */
+  .word DMA2_Stream1_IRQHandler
+  /* IRQ 58 */
+  .word DMA2_Stream2_IRQHandler
+  /* IRQ 59 */
+  .word DMA2_Stream3_IRQHandler
+  /* IRQ 60 */
+  .word DMA2_Stream4_IRQHandler
+  /* IRQ 61..67 */
+  .rept 7
   .word Default_Handler
   .endr
+  /* IRQ 68 */
+  .word DMA2_Stream5_IRQHandler
+  /* IRQ 69 */
+  .word DMA2_Stream6_IRQHandler
+  /* IRQ 70 */
+  .word DMA2_Stream7_IRQHandler
 
   /* IRQ 71 */
   .word USART6_IRQHandler
 
-  /* IRQ 72..159 */
-  .rept 88
+  /* IRQ 72..81 */
+  .rept 10
+  .word Default_Handler
+  .endr
+
+  /* IRQ 82 */
+  .word UART7_IRQHandler
+
+  /* IRQ 83 */
+  .word UART8_IRQHandler
+
+  /* IRQ 84..159 */
+  .rept 76
   .word Default_Handler
   .endr
 
@@ -198,6 +241,22 @@ g_pfnVectors:
   .thumb_set DMA1_Stream6_IRQHandler,Default_Handler
   .weak DMA1_Stream7_IRQHandler
   .thumb_set DMA1_Stream7_IRQHandler,Default_Handler
+  .weak DMA2_Stream0_IRQHandler
+  .thumb_set DMA2_Stream0_IRQHandler,Default_Handler
+  .weak DMA2_Stream1_IRQHandler
+  .thumb_set DMA2_Stream1_IRQHandler,Default_Handler
+  .weak DMA2_Stream2_IRQHandler
+  .thumb_set DMA2_Stream2_IRQHandler,Default_Handler
+  .weak DMA2_Stream3_IRQHandler
+  .thumb_set DMA2_Stream3_IRQHandler,Default_Handler
+  .weak DMA2_Stream4_IRQHandler
+  .thumb_set DMA2_Stream4_IRQHandler,Default_Handler
+  .weak DMA2_Stream5_IRQHandler
+  .thumb_set DMA2_Stream5_IRQHandler,Default_Handler
+  .weak DMA2_Stream6_IRQHandler
+  .thumb_set DMA2_Stream6_IRQHandler,Default_Handler
+  .weak DMA2_Stream7_IRQHandler
+  .thumb_set DMA2_Stream7_IRQHandler,Default_Handler
   .weak ADC_IRQHandler
   .thumb_set ADC_IRQHandler,Default_Handler
   .weak FDCAN1_IT0_IRQHandler
@@ -242,5 +301,13 @@ g_pfnVectors:
   .thumb_set USART2_IRQHandler,Default_Handler
   .weak USART3_IRQHandler
   .thumb_set USART3_IRQHandler,Default_Handler
+  .weak UART4_IRQHandler
+  .thumb_set UART4_IRQHandler,Default_Handler
+  .weak UART5_IRQHandler
+  .thumb_set UART5_IRQHandler,Default_Handler
   .weak USART6_IRQHandler
   .thumb_set USART6_IRQHandler,Default_Handler
+  .weak UART7_IRQHandler
+  .thumb_set UART7_IRQHandler,Default_Handler
+  .weak UART8_IRQHandler
+  .thumb_set UART8_IRQHandler,Default_Handler
