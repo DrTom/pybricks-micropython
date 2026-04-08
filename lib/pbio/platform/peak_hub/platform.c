@@ -21,6 +21,7 @@
 #endif
 
 #include <stm32h743xx.h>
+#include <stm32h7xx_ll_lpuart.h>
 
 #if PBDRV_CONFIG_USB_STM32H7
 #endif
@@ -35,6 +36,26 @@ enum {
     UART_PORT_G,
     UART_PORT_H,
 };
+
+volatile uint32_t peak_lpuart1_irq_count;
+volatile uint32_t peak_lpuart1_rx_count;
+volatile uint32_t peak_lpuart1_tx_count;
+
+static void lpuart1_write_byte(uint8_t b) {
+    for (uint32_t i = 0; i < 200000; i++) {
+        if (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->ISR & USART_ISR_TXE_TXFNF) {
+            PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->TDR = b;
+            peak_lpuart1_tx_count++;
+            return;
+        }
+    }
+}
+
+static void lpuart1_write_str(const char *s) {
+    while (*s) {
+        lpuart1_write_byte((uint8_t)*s++);
+    }
+}
 
 #if PBDRV_CONFIG_UART_STM32H7_LL_IRQ
 const pbdrv_uart_stm32h7_ll_irq_platform_data_t
@@ -161,6 +182,36 @@ void USART1_IRQHandler(void) {
 #elif PBDRV_CONFIG_UART_STM32H7_LL_IRQ
     pbdrv_uart_stm32h7_ll_irq_handle_irq(UART_PORT_A);
 #endif
+}
+
+void LPUART1_IRQHandler(void) {
+    uint32_t isr = PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->ISR;
+
+    if (isr & USART_ISR_PE) {
+        PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->ICR = USART_ICR_PECF;
+    }
+    if (isr & USART_ISR_FE) {
+        PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->ICR = USART_ICR_FECF;
+    }
+    if (isr & USART_ISR_NE) {
+        PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->ICR = USART_ICR_NECF;
+    }
+    if (isr & USART_ISR_ORE) {
+        PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->ICR = USART_ICR_ORECF;
+    }
+
+    if (isr & USART_ISR_RXNE_RXFNE) {
+        uint8_t c = (uint8_t)PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->RDR;
+        peak_lpuart1_rx_count++;
+
+        if (c == '\r') {
+            lpuart1_write_str("\r\n");
+        } else {
+            lpuart1_write_byte(c);
+        }
+    }
+
+    peak_lpuart1_irq_count++;
 }
 
 #if PBDRV_CONFIG_USB_STM32H7
@@ -409,6 +460,48 @@ static void configure_gpio_for_uart(void) {
     GPIOE->AFR[0] |=  ((8u << (1 * 4)) | (8u << (0 * 4)));
 }
 
+static void configure_gpio_for_lpuart1(void) {
+    // PB6/PB7 -> LPUART1 TX/RX (AF8), smoke-test mapping.
+    GPIOB->MODER &= ~((3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_TX_PIN * 2)) | (3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_RX_PIN * 2)));
+    GPIOB->MODER |=  ((2u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_TX_PIN * 2)) | (2u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_RX_PIN * 2)));
+    GPIOB->OSPEEDR |= (3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_TX_PIN * 2)) | (3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_RX_PIN * 2));
+    GPIOB->PUPDR &= ~((3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_TX_PIN * 2)) | (3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_RX_PIN * 2)));
+    GPIOB->PUPDR |=  (1u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_RX_PIN * 2));
+    GPIOB->AFR[0] &= ~((0xFu << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_TX_PIN * 4)) | (0xFu << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_RX_PIN * 4)));
+    GPIOB->AFR[0] |=  ((8u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_TX_PIN * 4)) | (8u << (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_RX_PIN * 4)));
+}
+
+static void configure_lpuart1_smoke(void) {
+    PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->CR1 = 0;
+    PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->CR2 = 0;
+    PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->CR3 = 0;
+
+    LL_LPUART_SetBaudRate(PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE, PBDRV_CONFIG_SYS_CLOCK_RATE, LL_LPUART_PRESCALER_DIV1, PBDRV_CONFIG_BLUETOOTH_PEAK_UART_BAUD);
+
+    PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE_RXFNEIE | USART_CR1_UE;
+
+    lpuart1_write_str("\r\n[LPUART1 smoke 115200]\r\n");
+
+    NVIC_SetPriority(PBDRV_CONFIG_BLUETOOTH_PEAK_UART_IRQ, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 1, 0));
+    NVIC_EnableIRQ(PBDRV_CONFIG_BLUETOOTH_PEAK_UART_IRQ);
+}
+
+static void configure_bluetooth_reset_placeholder(void) {
+    if (PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PIN == 0xFF) {
+        return;
+    }
+
+    uint32_t pin = PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PIN;
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PORT->MODER &= ~(3u << (pin * 2));
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PORT->MODER |=  (1u << (pin * 2));
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PORT->OTYPER &= ~(1u << pin);
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PORT->OSPEEDR |= (3u << (pin * 2));
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PORT->PUPDR &= ~(3u << (pin * 2));
+
+    // Keep coprocessor out of reset by default.
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PORT->BSRR = (1u << pin);
+}
+
 static void configure_heartbeat_led(void) {
     // WeAct Mini H7 user LED is on PE3.
     GPIOE->MODER &= ~(3u << (3 * 2));
@@ -443,6 +536,7 @@ void SystemInit(void) {
     RCC->AHB1ENR |= RCC_AHB1ENR_DMA1EN;
     RCC->AHB1ENR |= RCC_AHB1ENR_DMA2EN;
     RCC->APB4ENR |= RCC_APB4ENR_SYSCFGEN;
+    RCC->APB4ENR |= RCC_APB4ENR_LPUART1EN;
 
     #if PBDRV_CONFIG_USB_STM32H7
     bool usb_clk_from_pll3 = false;
@@ -485,6 +579,9 @@ void SystemInit(void) {
     #endif
 
     configure_gpio_for_uart();
+    configure_gpio_for_lpuart1();
+    configure_bluetooth_reset_placeholder();
+    configure_lpuart1_smoke();
     configure_heartbeat_led();
 
     // 1 ms system tick for pbdrv_clock_stm32.

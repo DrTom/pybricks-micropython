@@ -196,8 +196,16 @@ g_pfnVectors:
   /* IRQ 101 */
   .word OTG_FS_IRQHandler
 
-  /* IRQ 102..159 */
-  .rept 58
+  /* IRQ 102..141 */
+  .rept 40
+  .word Default_Handler
+  .endr
+
+  /* IRQ 142 */
+  .word LPUART1_IRQHandler
+
+  /* IRQ 143..159 */
+  .rept 17
   .word Default_Handler
   .endr
 
@@ -328,6 +336,8 @@ g_pfnVectors:
   .thumb_set UART7_IRQHandler,Default_Handler
   .weak UART8_IRQHandler
   .thumb_set UART8_IRQHandler,Default_Handler
+  .weak LPUART1_IRQHandler
+  .thumb_set LPUART1_IRQHandler,Default_Handler
   .weak OTG_FS_IRQHandler
   .thumb_set OTG_FS_IRQHandler,Default_Handler
   .weak OTG_FS_EP1_OUT_IRQHandler

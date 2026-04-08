@@ -6,6 +6,17 @@
 
 #define PBDRV_CONFIG_BLUETOOTH                      (0)
 
+// PeakHub Bluetooth coprocessor preparation (feature-gated, disabled by default).
+#define PBDRV_CONFIG_BLUETOOTH_PEAK_PREP            (1)
+#define PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE   LPUART1
+#define PBDRV_CONFIG_BLUETOOTH_PEAK_UART_IRQ        LPUART1_IRQn
+#define PBDRV_CONFIG_BLUETOOTH_PEAK_UART_BAUD       115200
+#define PBDRV_CONFIG_BLUETOOTH_PEAK_UART_TX_PIN     6  // PB6 (smoke-test mapping)
+#define PBDRV_CONFIG_BLUETOOTH_PEAK_UART_RX_PIN     7  // PB7 (smoke-test mapping)
+// Set to a board-specific GPIO when hardware is finalized.
+#define PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PORT      GPIOB
+#define PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PIN       0xFF
+
 #define PBDRV_CONFIG_BLOCK_DEVICE                   (1)
 #define PBDRV_CONFIG_BLOCK_DEVICE_RAM_SIZE          (160 * 1024)
 #define PBDRV_CONFIG_BLOCK_DEVICE_FLASH_STM32       (1)
