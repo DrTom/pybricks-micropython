@@ -6,7 +6,10 @@
 
 #define PBDRV_CONFIG_BLUETOOTH                      (0)
 
-#define PBDRV_CONFIG_BLOCK_DEVICE                   (0)
+#define PBDRV_CONFIG_BLOCK_DEVICE                   (1)
+#define PBDRV_CONFIG_BLOCK_DEVICE_RAM_SIZE          (160 * 1024)
+#define PBDRV_CONFIG_BLOCK_DEVICE_FLASH_STM32       (1)
+#define PBDRV_CONFIG_BLOCK_DEVICE_FLASH_STM32_SIZE  (128 * 1024)
 
 #define PBDRV_CONFIG_BUTTON                         (0)
 

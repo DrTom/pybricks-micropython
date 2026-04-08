@@ -88,9 +88,14 @@ static void pbdrv_block_device_update_ramdisk_size_and_checksum(uint32_t used_da
     // Total size includes used data and header.
     ramdisk.saved_size = used_data_size + header_size;
 
-    // Align writable data by a double word, to simplify checksum
-    // computation and storage drivers that write double words.
-    while (ramdisk.saved_size % 8) {
+    #if defined(STM32H7)
+    const uint32_t write_size = FLASH_NB_32BITWORD_IN_FLASHWORD * sizeof(uint32_t);
+    #else
+    const uint32_t write_size = sizeof(uint64_t);
+    #endif
+
+    // Align writable data to flash write granularity.
+    while (ramdisk.saved_size % write_size) {
         *((uint8_t *)&ramdisk + ramdisk.saved_size++) = 0;
     }
 
@@ -128,8 +133,14 @@ pbio_error_t pbdrv_block_device_write_all(pbio_os_state_t *state, uint32_t used_
 
     static const uint32_t base_address = (uint32_t)(&_pbdrv_block_device_storage_start[0]);
 
-    // Exit if size is 0, too big, or not a multiple of double-word size.
-    if (size == 0 || size > PBDRV_CONFIG_BLOCK_DEVICE_FLASH_STM32_SIZE || size % sizeof(uint64_t)) {
+    #if defined(STM32H7)
+    const uint32_t flash_write_size = FLASH_NB_32BITWORD_IN_FLASHWORD * sizeof(uint32_t);
+    #else
+    const uint32_t flash_write_size = sizeof(uint64_t);
+    #endif
+
+    // Exit if size is 0, too big, or not a multiple of write granularity.
+    if (size == 0 || size > PBDRV_CONFIG_BLOCK_DEVICE_FLASH_STM32_SIZE || size % flash_write_size) {
         return PBIO_ERROR_INVALID_ARG;
     }
 
@@ -146,11 +157,19 @@ pbio_error_t pbdrv_block_device_write_all(pbio_os_state_t *state, uint32_t used_
         #elif defined(STM32L4)
         .Banks = FLASH_BANK_1, // Hard coded for STM32L431RC.
         .Page = (FLASH_SIZE - (PBDRV_CONFIG_BLOCK_DEVICE_FLASH_STM32_SIZE)) / FLASH_PAGE_SIZE,
+        #elif defined(STM32H7)
+        .TypeErase = FLASH_TYPEERASE_SECTORS,
+        .Banks = FLASH_BANK_2,
+        .Sector = 7,
+        .NbSectors = 1,
+        .VoltageRange = FLASH_VOLTAGE_RANGE_3,
         #else
         #error "Unsupported target."
         #endif
+        #if !defined(STM32H7)
         .NbPages = PBDRV_CONFIG_BLOCK_DEVICE_FLASH_STM32_SIZE / FLASH_PAGE_SIZE,
         .TypeErase = FLASH_TYPEERASE_PAGES
+        #endif
     };
 
     // Disable interrupts to avoid crash if reading while writing/erasing.
@@ -175,7 +194,11 @@ pbio_error_t pbdrv_block_device_write_all(pbio_os_state_t *state, uint32_t used_
         __disable_irq();
 
         // Write the data and re-enable interrupts.
+        #if defined(STM32H7)
+        hal_err = HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, base_address + done, (uint32_t)((uint8_t *)&ramdisk + done));
+        #else
         hal_err = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, base_address + done, *(uint64_t *)((void *)&ramdisk + done));
+        #endif
         __set_PRIMASK(irq);
         if (hal_err != HAL_OK) {
             HAL_FLASH_Lock();
@@ -183,7 +206,7 @@ pbio_error_t pbdrv_block_device_write_all(pbio_os_state_t *state, uint32_t used_
         }
 
         // Update write progress.
-        done += sizeof(uint64_t);
+        done += flash_write_size;
     }
 
     // Lock flash on completion.
