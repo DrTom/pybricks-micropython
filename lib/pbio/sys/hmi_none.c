@@ -17,6 +17,10 @@
 #include <pbsys/main.h>
 #include <pbsys/status.h>
 
+#ifndef PBSYS_CONFIG_HMI_NONE_STARTS_REPL
+#define PBSYS_CONFIG_HMI_NONE_STARTS_REPL (1)
+#endif
+
 void pbsys_hmi_init(void) {
 }
 
@@ -35,7 +39,17 @@ pbio_error_t pbsys_hmi_await_program_selection(void) {
         pbio_os_run_processes_and_wait_for_event();
     } while (pbdrv_button_get_pressed());
 
+    #if PBSYS_CONFIG_HMI_NONE_STARTS_REPL
     return pbsys_main_program_request_start(PBIO_PYBRICKS_USER_PROGRAM_ID_REPL, PBSYS_MAIN_PROGRAM_START_REQUEST_TYPE_BOOT);
+    #else
+    while (!pbsys_main_program_start_is_requested()) {
+        if (pbsys_status_test(PBIO_PYBRICKS_STATUS_SHUTDOWN_REQUEST)) {
+            return PBIO_ERROR_CANCELED;
+        }
+        pbio_os_run_processes_and_wait_for_event();
+    }
+    return PBIO_SUCCESS;
+    #endif
 }
 
 #endif // PBSYS_CONFIG_HMI_NONE

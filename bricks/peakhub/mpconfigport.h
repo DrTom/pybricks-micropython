@@ -2,7 +2,7 @@
 
 #include "stm32h743xx.h"
 
-#define MICROPY_HW_BOARD_NAME                   "Hub Peak (prototype)"
+#define MICROPY_HW_BOARD_NAME                   "PeakHub (prototype)"
 #define MICROPY_HW_MCU_NAME                     "STM32H743VI"
 
 #define PYBRICKS_HUB_NAME                       "peakhub"
