@@ -20,6 +20,8 @@
 #include <drv/uart/uart_stm32h7_ll_irq.h>
 #endif
 
+#include <stdbool.h>
+
 #include <stm32h743xx.h>
 #include <stm32h7xx_ll_lpuart.h>
 
@@ -40,21 +42,56 @@ enum {
 volatile uint32_t peak_lpuart1_irq_count;
 volatile uint32_t peak_lpuart1_rx_count;
 volatile uint32_t peak_lpuart1_tx_count;
+volatile uint32_t peak_lpuart1_hci_reset_sent_count;
+volatile uint32_t peak_lpuart1_hci_reset_rsp_count;
+volatile uint32_t peak_lpuart1_hci_last_byte;
+volatile uint32_t peak_lpuart1_cts_asserted_count;
+volatile uint32_t peak_lpuart1_cts_deasserted_count;
+volatile uint32_t peak_lpuart1_tx_blocked_by_cts;
+volatile uint32_t peak_lpuart1_rx_log_count;
+volatile uint8_t peak_lpuart1_rx_log[32];
+
+static const uint8_t peak_hci_reset_cmd[] = {0x01, 0x03, 0x0C, 0x00};
+static uint8_t peak_hci_match_index;
 
 static void lpuart1_write_byte(uint8_t b) {
+    bool was_blocked = false;
+
     for (uint32_t i = 0; i < 200000; i++) {
+        #if PBDRV_CONFIG_BLUETOOTH_PEAK_FLOW_PROBE
+        bool cts_asserted = (PBDRV_CONFIG_BLUETOOTH_PEAK_CTS_PORT->IDR & (1u << PBDRV_CONFIG_BLUETOOTH_PEAK_CTS_PIN)) == 0;
+        if (!cts_asserted) {
+            peak_lpuart1_cts_deasserted_count++;
+            was_blocked = true;
+            continue;
+        }
+        peak_lpuart1_cts_asserted_count++;
+        #endif
+
         if (PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->ISR & USART_ISR_TXE_TXFNF) {
             PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->TDR = b;
             peak_lpuart1_tx_count++;
+            if (was_blocked) {
+                peak_lpuart1_tx_blocked_by_cts++;
+            }
             return;
         }
     }
 }
 
+#if !PBDRV_CONFIG_BLUETOOTH_PEAK_HCI_PROBE
 static void lpuart1_write_str(const char *s) {
     while (*s) {
         lpuart1_write_byte((uint8_t)*s++);
     }
+}
+#endif
+
+static void lpuart1_send_hci_reset(void) {
+    for (uint32_t i = 0; i < sizeof(peak_hci_reset_cmd); i++) {
+        lpuart1_write_byte(peak_hci_reset_cmd[i]);
+    }
+    peak_lpuart1_hci_reset_sent_count++;
 }
 
 #if PBDRV_CONFIG_UART_STM32H7_LL_IRQ
@@ -203,12 +240,50 @@ void LPUART1_IRQHandler(void) {
     if (isr & USART_ISR_RXNE_RXFNE) {
         uint8_t c = (uint8_t)PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->RDR;
         peak_lpuart1_rx_count++;
+        peak_lpuart1_hci_last_byte = c;
 
+        if (peak_lpuart1_rx_log_count < sizeof(peak_lpuart1_rx_log)) {
+            peak_lpuart1_rx_log[peak_lpuart1_rx_log_count++] = c;
+        }
+
+        #if PBDRV_CONFIG_BLUETOOTH_PEAK_HCI_PROBE
+        switch (peak_hci_match_index) {
+            case 0:
+                peak_hci_match_index = (c == 0x04) ? 1 : 0; // HCI Event packet type
+                break;
+            case 1:
+                peak_hci_match_index = (c == 0x0E) ? 2 : (c == 0x04 ? 1 : 0); // Command Complete
+                break;
+            case 2:
+                peak_hci_match_index = (c == 0x04) ? 3 : (c == 0x04 ? 1 : 0); // parameter length
+                break;
+            case 3:
+                // Num_HCI_Command_Packets can vary by controller; accept any.
+                peak_hci_match_index = 4;
+                break;
+            case 4:
+                peak_hci_match_index = (c == 0x03) ? 5 : (c == 0x04 ? 1 : 0); // OCF(HCI Reset)
+                break;
+            case 5:
+                peak_hci_match_index = (c == 0x0C) ? 6 : (c == 0x04 ? 1 : 0); // OGF(HCI Reset)
+                break;
+            case 6:
+                if (c == 0x00) {
+                    peak_lpuart1_hci_reset_rsp_count++;
+                }
+                peak_hci_match_index = (c == 0x04) ? 1 : 0;
+                break;
+            default:
+                peak_hci_match_index = 0;
+                break;
+        }
+        #else
         if (c == '\r') {
             lpuart1_write_str("\r\n");
         } else {
             lpuart1_write_byte(c);
         }
+        #endif
     }
 
     peak_lpuart1_irq_count++;
@@ -480,7 +555,11 @@ static void configure_lpuart1_smoke(void) {
 
     PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE_RXFNEIE | USART_CR1_UE;
 
-    lpuart1_write_str("\r\n[LPUART1 smoke 115200]\r\n");
+    #if PBDRV_CONFIG_BLUETOOTH_PEAK_HCI_PROBE
+    lpuart1_send_hci_reset();
+    #else
+    lpuart1_write_str("\r\n[LPUART1 smoke]\r\n");
+    #endif
 
     NVIC_SetPriority(PBDRV_CONFIG_BLUETOOTH_PEAK_UART_IRQ, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 1, 0));
     NVIC_EnableIRQ(PBDRV_CONFIG_BLUETOOTH_PEAK_UART_IRQ);
@@ -500,6 +579,21 @@ static void configure_bluetooth_reset_placeholder(void) {
 
     // Keep coprocessor out of reset by default.
     PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PORT->BSRR = (1u << pin);
+}
+
+static void configure_bluetooth_flowcontrol_placeholders(void) {
+    // RTS placeholder: output low (asserted/ready) so peer is allowed to send.
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PORT->MODER &= ~(3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PIN * 2));
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PORT->MODER |=  (1u << (PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PIN * 2));
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PORT->OTYPER &= ~(1u << PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PIN);
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PORT->OSPEEDR |= (3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PIN * 2));
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PORT->PUPDR &= ~(3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PIN * 2));
+    PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PORT->BSRR = (1u << (PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PIN + 16));
+
+    // CTS placeholder: input with pull-up.
+    PBDRV_CONFIG_BLUETOOTH_PEAK_CTS_PORT->MODER &= ~(3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_CTS_PIN * 2));
+    PBDRV_CONFIG_BLUETOOTH_PEAK_CTS_PORT->PUPDR &= ~(3u << (PBDRV_CONFIG_BLUETOOTH_PEAK_CTS_PIN * 2));
+    PBDRV_CONFIG_BLUETOOTH_PEAK_CTS_PORT->PUPDR |=  (1u << (PBDRV_CONFIG_BLUETOOTH_PEAK_CTS_PIN * 2));
 }
 
 static void configure_heartbeat_led(void) {
@@ -580,6 +674,7 @@ void SystemInit(void) {
 
     configure_gpio_for_uart();
     configure_gpio_for_lpuart1();
+    configure_bluetooth_flowcontrol_placeholders();
     configure_bluetooth_reset_placeholder();
     configure_lpuart1_smoke();
     configure_heartbeat_led();
