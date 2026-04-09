@@ -48,4 +48,19 @@ void pbdrv_bluetooth_btstack_stm32_hal_handle_tx_dma_irq(void);
 void pbdrv_bluetooth_btstack_stm32_hal_handle_rx_dma_irq(void);
 void pbdrv_bluetooth_btstack_stm32_hal_handle_uart_irq(void);
 
+// Diagnostic counters for disconnect/re-advertise path (defined in stm32_hal.c)
+#if defined(PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY) && PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+extern volatile uint32_t pbdrv_btstack_diag_start_adv_called;
+extern volatile uint32_t pbdrv_btstack_diag_start_adv_hci_disabled;
+extern volatile uint32_t pbdrv_btstack_diag_start_adv_already_adv;
+extern volatile uint32_t pbdrv_btstack_diag_start_adv_busy;
+extern volatile uint32_t pbdrv_btstack_diag_start_adv_scheduled;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_entered;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_ble_unsupported;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_no_host_slot;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_gap_enable_called;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_timed_out;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_success;
+#endif
+
 #endif // _INTERNAL_PBDRV_BLUETOOTH_BTSTACK_STM32_HAL_H_

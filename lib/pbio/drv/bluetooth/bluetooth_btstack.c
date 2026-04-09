@@ -26,6 +26,18 @@
 #include "bluetooth.h"
 #include "bluetooth_btstack.h"
 
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32 && defined(PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY) && PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_entered;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_ble_unsupported;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_no_host_slot;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_gap_enable_called;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_timed_out;
+extern volatile uint32_t pbdrv_btstack_diag_adv_func_success;
+#define DIAG_INC(x) do { (x)++; } while (0)
+#else
+#define DIAG_INC(x) do { } while (0)
+#endif
+
 #include "genhdr/pybricks_service.h"
 #include "pybricks_service_server.h"
 
@@ -604,7 +616,10 @@ pbio_error_t pbdrv_bluetooth_start_advertising_func(pbio_os_state_t *state, void
     return PBIO_ERROR_NOT_SUPPORTED;
     #endif
 
+    DIAG_INC(pbdrv_btstack_diag_adv_func_entered);
+
     if (!pbdrv_bluetooth_btstack_ble_supported()) {
+        DIAG_INC(pbdrv_btstack_diag_adv_func_ble_unsupported);
         return PBIO_ERROR_NOT_SUPPORTED;
     }
 
@@ -616,9 +631,11 @@ pbio_error_t pbdrv_bluetooth_start_advertising_func(pbio_os_state_t *state, void
     if (host == NULL) {
         // There should be at least one available host connection. Otherwise
         // we will never receive the advertise completion event below.
+        DIAG_INC(pbdrv_btstack_diag_adv_func_no_host_slot);
         return PBIO_ERROR_INVALID_OP;
     }
 
+    DIAG_INC(pbdrv_btstack_diag_adv_func_gap_enable_called);
     init_advertising_data();
     gap_advertisements_enable(true);
 
@@ -629,9 +646,11 @@ pbio_error_t pbdrv_bluetooth_start_advertising_func(pbio_os_state_t *state, void
         (event_packet && HCI_EVENT_IS_COMMAND_COMPLETE(event_packet, hci_le_set_advertise_enable)));
 
     if (pbio_os_timer_is_expired(&timer)) {
+        DIAG_INC(pbdrv_btstack_diag_adv_func_timed_out);
         return PBIO_ERROR_TIMEDOUT;
     }
 
+    DIAG_INC(pbdrv_btstack_diag_adv_func_success);
     pbdrv_bluetooth_advertising_state = PBDRV_BLUETOOTH_ADVERTISING_STATE_ADVERTISING_PYBRICKS;
 
     PBIO_OS_ASYNC_END(PBIO_SUCCESS);

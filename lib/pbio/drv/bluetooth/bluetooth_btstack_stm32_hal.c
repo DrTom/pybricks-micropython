@@ -64,6 +64,20 @@ volatile uint32_t pbdrv_btstack_stm32_uart_recv_block_count;
 volatile uint32_t pbdrv_btstack_stm32_uart_recv_bytes;
 volatile uint32_t pbdrv_btstack_stm32_uart_tx_irq_count;
 volatile uint32_t pbdrv_btstack_stm32_uart_rx_irq_count;
+// Diagnostic milestones for disconnect/re-advertise path
+volatile uint32_t pbdrv_btstack_diag_start_adv_called;
+volatile uint32_t pbdrv_btstack_diag_start_adv_hci_disabled;
+volatile uint32_t pbdrv_btstack_diag_start_adv_already_adv;
+volatile uint32_t pbdrv_btstack_diag_start_adv_busy;
+volatile uint32_t pbdrv_btstack_diag_start_adv_scheduled;
+volatile uint32_t pbdrv_btstack_diag_adv_func_entered;
+volatile uint32_t pbdrv_btstack_diag_adv_func_ble_unsupported;
+volatile uint32_t pbdrv_btstack_diag_adv_func_no_host_slot;
+volatile uint32_t pbdrv_btstack_diag_adv_func_gap_enable_called;
+volatile uint32_t pbdrv_btstack_diag_adv_func_timed_out;
+volatile uint32_t pbdrv_btstack_diag_adv_func_success;
+volatile uint32_t pbdrv_btstack_diag_hal_tx_fail;
+volatile uint32_t pbdrv_btstack_diag_hal_tx_abort;
 
 typedef struct {
     uint32_t seq;
@@ -92,6 +106,20 @@ typedef struct {
     uint32_t uart_recv_bytes;
     uint32_t uart_tx_irq_count;
     uint32_t uart_rx_irq_count;
+    // Disconnect/re-advertise diagnostics
+    uint32_t diag_start_adv_called;
+    uint32_t diag_start_adv_hci_disabled;
+    uint32_t diag_start_adv_already_adv;
+    uint32_t diag_start_adv_busy;
+    uint32_t diag_start_adv_scheduled;
+    uint32_t diag_adv_func_entered;
+    uint32_t diag_adv_func_ble_unsupported;
+    uint32_t diag_adv_func_no_host_slot;
+    uint32_t diag_adv_func_gap_enable_called;
+    uint32_t diag_adv_func_timed_out;
+    uint32_t diag_adv_func_success;
+    uint32_t diag_hal_tx_fail;
+    uint32_t diag_hal_tx_abort;
 } pbdrv_btstack_stm32_telemetry_snapshot_t;
 
 volatile pbdrv_btstack_stm32_telemetry_snapshot_t pbdrv_btstack_stm32_telemetry_snapshot;
@@ -123,6 +151,19 @@ static void pbdrv_btstack_stm32_telemetry_refresh(void) {
     pbdrv_btstack_stm32_telemetry_snapshot.uart_recv_bytes = pbdrv_btstack_stm32_uart_recv_bytes;
     pbdrv_btstack_stm32_telemetry_snapshot.uart_tx_irq_count = pbdrv_btstack_stm32_uart_tx_irq_count;
     pbdrv_btstack_stm32_telemetry_snapshot.uart_rx_irq_count = pbdrv_btstack_stm32_uart_rx_irq_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_start_adv_called = pbdrv_btstack_diag_start_adv_called;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_start_adv_hci_disabled = pbdrv_btstack_diag_start_adv_hci_disabled;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_start_adv_already_adv = pbdrv_btstack_diag_start_adv_already_adv;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_start_adv_busy = pbdrv_btstack_diag_start_adv_busy;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_start_adv_scheduled = pbdrv_btstack_diag_start_adv_scheduled;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_adv_func_entered = pbdrv_btstack_diag_adv_func_entered;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_adv_func_ble_unsupported = pbdrv_btstack_diag_adv_func_ble_unsupported;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_adv_func_no_host_slot = pbdrv_btstack_diag_adv_func_no_host_slot;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_adv_func_gap_enable_called = pbdrv_btstack_diag_adv_func_gap_enable_called;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_adv_func_timed_out = pbdrv_btstack_diag_adv_func_timed_out;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_adv_func_success = pbdrv_btstack_diag_adv_func_success;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_hal_tx_fail = pbdrv_btstack_diag_hal_tx_fail;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_hal_tx_abort = pbdrv_btstack_diag_hal_tx_abort;
     pbdrv_btstack_stm32_telemetry_snapshot.seq++;
 }
 #endif
@@ -498,7 +539,13 @@ static void btstack_stm32_hal_send_block(const uint8_t *data, uint16_t size) {
     } else {
         hal_status = HAL_UART_Transmit_IT(&btstack_huart, (uint8_t *)data, size);
         if (hal_status != HAL_OK) {
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+            pbdrv_btstack_diag_hal_tx_fail++;
+#endif
             HAL_UART_AbortTransmit(&btstack_huart);
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+            pbdrv_btstack_diag_hal_tx_abort++;
+#endif
             (void)HAL_UART_Transmit_IT(&btstack_huart, (uint8_t *)data, size);
         }
     }

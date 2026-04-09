@@ -21,6 +21,17 @@
 
 #include "./bluetooth.h"
 
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32 && defined(PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY) && PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+extern volatile uint32_t pbdrv_btstack_diag_start_adv_called;
+extern volatile uint32_t pbdrv_btstack_diag_start_adv_hci_disabled;
+extern volatile uint32_t pbdrv_btstack_diag_start_adv_already_adv;
+extern volatile uint32_t pbdrv_btstack_diag_start_adv_busy;
+extern volatile uint32_t pbdrv_btstack_diag_start_adv_scheduled;
+#define DIAG_INC(x) do { (x)++; } while (0)
+#else
+#define DIAG_INC(x) do { } while (0)
+#endif
+
 #define DEBUG 0
 
 #if DEBUG
@@ -363,7 +374,10 @@ pbdrv_bluetooth_advertising_state_t pbdrv_bluetooth_advertising_state;
 
 pbio_error_t pbdrv_bluetooth_start_advertising(bool start) {
 
+    DIAG_INC(pbdrv_btstack_diag_start_adv_called);
+
     if (!pbdrv_bluetooth_hci_is_enabled()) {
+        DIAG_INC(pbdrv_btstack_diag_start_adv_hci_disabled);
         return PBIO_ERROR_INVALID_OP;
     }
 
@@ -372,11 +386,13 @@ pbio_error_t pbdrv_bluetooth_start_advertising(bool start) {
     // Already in requested state. This makes it safe to call stop advertising
     // even if it already stopped on becoming connected;
     if (start == is_advertising) {
+        DIAG_INC(pbdrv_btstack_diag_start_adv_already_adv);
         advertising_or_scan_err = PBIO_SUCCESS;
         return PBIO_SUCCESS;
     }
 
     if (advertising_or_scan_func) {
+        DIAG_INC(pbdrv_btstack_diag_start_adv_busy);
         return PBIO_ERROR_BUSY;
     }
 
@@ -384,6 +400,7 @@ pbio_error_t pbdrv_bluetooth_start_advertising(bool start) {
     pbdrv_bluetooth_broadcast_data_size = 0;
 
     // Initialize newly given task.
+    DIAG_INC(pbdrv_btstack_diag_start_adv_scheduled);
     advertising_or_scan_err = PBIO_ERROR_AGAIN;
     advertising_or_scan_func = start ?
         pbdrv_bluetooth_start_advertising_func :
