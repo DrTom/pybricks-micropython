@@ -40,6 +40,8 @@
 #define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY 0
 #endif
 
+static bool btstack_use_dma;
+
 #if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
 volatile uint32_t pbdrv_btstack_stm32_init_count;
 volatile uint32_t pbdrv_btstack_stm32_hci_event_count;
@@ -57,6 +59,57 @@ volatile uint32_t pbdrv_btstack_stm32_uart_recv_block_count;
 volatile uint32_t pbdrv_btstack_stm32_uart_recv_bytes;
 volatile uint32_t pbdrv_btstack_stm32_uart_tx_irq_count;
 volatile uint32_t pbdrv_btstack_stm32_uart_rx_irq_count;
+
+typedef struct {
+    uint32_t seq;
+    uint32_t init_count;
+    uint32_t use_dma;
+    uint32_t baudrate_init;
+    uint32_t baudrate_main;
+    uint32_t flowcontrol;
+    uint32_t hci_event_count;
+    uint32_t hci_acl_count;
+    uint32_t hci_cmd_count;
+    uint32_t hci_iso_count;
+    uint32_t hci_unknown_count;
+    uint32_t hci_last_packet_type;
+    uint32_t hci_last_event_code;
+    uint32_t hci_last_opcode;
+    uint32_t hci_last_status;
+    uint32_t uart_send_block_count;
+    uint32_t uart_send_bytes;
+    uint32_t uart_recv_block_count;
+    uint32_t uart_recv_bytes;
+    uint32_t uart_tx_irq_count;
+    uint32_t uart_rx_irq_count;
+} pbdrv_btstack_stm32_telemetry_snapshot_t;
+
+volatile pbdrv_btstack_stm32_telemetry_snapshot_t pbdrv_btstack_stm32_telemetry_snapshot;
+
+static void pbdrv_btstack_stm32_telemetry_refresh(void) {
+    pbdrv_btstack_stm32_telemetry_snapshot.seq++;
+    pbdrv_btstack_stm32_telemetry_snapshot.init_count = pbdrv_btstack_stm32_init_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.use_dma = btstack_use_dma ? 1 : 0;
+    pbdrv_btstack_stm32_telemetry_snapshot.baudrate_init = PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_INIT;
+    pbdrv_btstack_stm32_telemetry_snapshot.baudrate_main = PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_MAIN;
+    pbdrv_btstack_stm32_telemetry_snapshot.flowcontrol = PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_FLOWCONTROL;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_event_count = pbdrv_btstack_stm32_hci_event_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_acl_count = pbdrv_btstack_stm32_hci_acl_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_cmd_count = pbdrv_btstack_stm32_hci_cmd_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_iso_count = pbdrv_btstack_stm32_hci_iso_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_unknown_count = pbdrv_btstack_stm32_hci_unknown_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_last_packet_type = pbdrv_btstack_stm32_hci_last_packet_type;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_last_event_code = pbdrv_btstack_stm32_hci_last_event_code;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_last_opcode = pbdrv_btstack_stm32_hci_last_opcode;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_last_status = pbdrv_btstack_stm32_hci_last_status;
+    pbdrv_btstack_stm32_telemetry_snapshot.uart_send_block_count = pbdrv_btstack_stm32_uart_send_block_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.uart_send_bytes = pbdrv_btstack_stm32_uart_send_bytes;
+    pbdrv_btstack_stm32_telemetry_snapshot.uart_recv_block_count = pbdrv_btstack_stm32_uart_recv_block_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.uart_recv_bytes = pbdrv_btstack_stm32_uart_recv_bytes;
+    pbdrv_btstack_stm32_telemetry_snapshot.uart_tx_irq_count = pbdrv_btstack_stm32_uart_tx_irq_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.uart_rx_irq_count = pbdrv_btstack_stm32_uart_rx_irq_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.seq++;
+}
 #endif
 
 pbio_error_t pbdrv_bluetooth_btstack_platform_init(void) {
@@ -77,11 +130,15 @@ pbio_error_t pbdrv_bluetooth_btstack_platform_init(void) {
     pbdrv_btstack_stm32_uart_recv_bytes = 0;
     pbdrv_btstack_stm32_uart_tx_irq_count = 0;
     pbdrv_btstack_stm32_uart_rx_irq_count = 0;
+    pbdrv_btstack_stm32_telemetry_refresh();
 #endif
     return PBIO_SUCCESS;
 }
 
 void pbdrv_bluetooth_btstack_platform_poll(void) {
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+    pbdrv_btstack_stm32_telemetry_refresh();
+#endif
 }
 
 void pbdrv_bluetooth_btstack_platform_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size) {
@@ -119,6 +176,7 @@ void pbdrv_bluetooth_btstack_platform_packet_handler(uint8_t packet_type, uint16
             pbdrv_btstack_stm32_hci_unknown_count++;
             break;
     }
+    pbdrv_btstack_stm32_telemetry_refresh();
 #else
     (void)packet_type;
     (void)packet;
@@ -200,7 +258,6 @@ static btstack_data_source_t transport_data_source;
 
 static volatile bool send_complete;
 static volatile bool receive_complete;
-static bool btstack_use_dma;
 
 // callbacks
 static void (*block_sent)(void);
@@ -235,6 +292,10 @@ static int btstack_stm32_hal_init(const btstack_uart_config_t *config) {
     uart_config = config;
 
     btstack_use_dma = pdata->tx_dma != NULL && pdata->rx_dma != NULL;
+
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+    pbdrv_btstack_stm32_telemetry_refresh();
+#endif
 
     if (btstack_use_dma) {
         btstack_tx_hdma.Instance = pdata->tx_dma;
