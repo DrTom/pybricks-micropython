@@ -53,6 +53,11 @@ volatile uint32_t pbdrv_btstack_stm32_hci_last_packet_type;
 volatile uint32_t pbdrv_btstack_stm32_hci_last_event_code;
 volatile uint32_t pbdrv_btstack_stm32_hci_last_opcode;
 volatile uint32_t pbdrv_btstack_stm32_hci_last_status;
+volatile uint32_t pbdrv_btstack_stm32_hci_state_event_count;
+volatile uint32_t pbdrv_btstack_stm32_hci_last_state;
+volatile uint32_t pbdrv_btstack_stm32_hci_le_meta_event_count;
+volatile uint32_t pbdrv_btstack_stm32_hci_last_le_subevent;
+volatile uint32_t pbdrv_btstack_stm32_hci_disconnect_event_count;
 volatile uint32_t pbdrv_btstack_stm32_uart_send_block_count;
 volatile uint32_t pbdrv_btstack_stm32_uart_send_bytes;
 volatile uint32_t pbdrv_btstack_stm32_uart_recv_block_count;
@@ -76,6 +81,11 @@ typedef struct {
     uint32_t hci_last_event_code;
     uint32_t hci_last_opcode;
     uint32_t hci_last_status;
+    uint32_t hci_state_event_count;
+    uint32_t hci_last_state;
+    uint32_t hci_le_meta_event_count;
+    uint32_t hci_last_le_subevent;
+    uint32_t hci_disconnect_event_count;
     uint32_t uart_send_block_count;
     uint32_t uart_send_bytes;
     uint32_t uart_recv_block_count;
@@ -102,6 +112,11 @@ static void pbdrv_btstack_stm32_telemetry_refresh(void) {
     pbdrv_btstack_stm32_telemetry_snapshot.hci_last_event_code = pbdrv_btstack_stm32_hci_last_event_code;
     pbdrv_btstack_stm32_telemetry_snapshot.hci_last_opcode = pbdrv_btstack_stm32_hci_last_opcode;
     pbdrv_btstack_stm32_telemetry_snapshot.hci_last_status = pbdrv_btstack_stm32_hci_last_status;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_state_event_count = pbdrv_btstack_stm32_hci_state_event_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_last_state = pbdrv_btstack_stm32_hci_last_state;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_le_meta_event_count = pbdrv_btstack_stm32_hci_le_meta_event_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_last_le_subevent = pbdrv_btstack_stm32_hci_last_le_subevent;
+    pbdrv_btstack_stm32_telemetry_snapshot.hci_disconnect_event_count = pbdrv_btstack_stm32_hci_disconnect_event_count;
     pbdrv_btstack_stm32_telemetry_snapshot.uart_send_block_count = pbdrv_btstack_stm32_uart_send_block_count;
     pbdrv_btstack_stm32_telemetry_snapshot.uart_send_bytes = pbdrv_btstack_stm32_uart_send_bytes;
     pbdrv_btstack_stm32_telemetry_snapshot.uart_recv_block_count = pbdrv_btstack_stm32_uart_recv_block_count;
@@ -124,6 +139,11 @@ pbio_error_t pbdrv_bluetooth_btstack_platform_init(void) {
     pbdrv_btstack_stm32_hci_last_event_code = 0;
     pbdrv_btstack_stm32_hci_last_opcode = 0;
     pbdrv_btstack_stm32_hci_last_status = 0;
+    pbdrv_btstack_stm32_hci_state_event_count = 0;
+    pbdrv_btstack_stm32_hci_last_state = 0;
+    pbdrv_btstack_stm32_hci_le_meta_event_count = 0;
+    pbdrv_btstack_stm32_hci_last_le_subevent = 0;
+    pbdrv_btstack_stm32_hci_disconnect_event_count = 0;
     pbdrv_btstack_stm32_uart_send_block_count = 0;
     pbdrv_btstack_stm32_uart_send_bytes = 0;
     pbdrv_btstack_stm32_uart_recv_block_count = 0;
@@ -151,6 +171,16 @@ void pbdrv_bluetooth_btstack_platform_packet_handler(uint8_t packet_type, uint16
             pbdrv_btstack_stm32_hci_event_count++;
             if (size > 0) {
                 pbdrv_btstack_stm32_hci_last_event_code = packet[0];
+
+                if (packet[0] == BTSTACK_EVENT_STATE && size >= 3) {
+                    pbdrv_btstack_stm32_hci_state_event_count++;
+                    pbdrv_btstack_stm32_hci_last_state = packet[2];
+                } else if (packet[0] == HCI_EVENT_LE_META && size >= 3) {
+                    pbdrv_btstack_stm32_hci_le_meta_event_count++;
+                    pbdrv_btstack_stm32_hci_last_le_subevent = packet[2];
+                } else if (packet[0] == HCI_EVENT_DISCONNECTION_COMPLETE) {
+                    pbdrv_btstack_stm32_hci_disconnect_event_count++;
+                }
 
                 if (packet[0] == HCI_EVENT_COMMAND_COMPLETE && size >= 6) {
                     pbdrv_btstack_stm32_hci_last_opcode = packet[3] | (((uint16_t)packet[4]) << 8);
