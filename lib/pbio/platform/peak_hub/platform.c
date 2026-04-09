@@ -22,6 +22,12 @@
 
 #include <stdbool.h>
 
+#if PBDRV_CONFIG_BLUETOOTH_PEAK_ENABLE_STUBS && PBDRV_CONFIG_BLUETOOTH_BTSTACK
+#include <btstack_chipset_zephyr.h>
+#include "../../drv/bluetooth/bluetooth_btstack.h"
+#include "../../drv/bluetooth/bluetooth_btstack_stm32_hal.h"
+#endif
+
 #include <stm32h743xx.h>
 #include <stm32h7xx_ll_lpuart.h>
 
@@ -51,8 +57,10 @@ volatile uint32_t peak_lpuart1_tx_blocked_by_cts;
 volatile uint32_t peak_lpuart1_rx_log_count;
 volatile uint8_t peak_lpuart1_rx_log[32];
 
+#if PBDRV_CONFIG_BLUETOOTH_PEAK_HCI_PROBE
 static const uint8_t peak_hci_reset_cmd[] = {0x01, 0x03, 0x0C, 0x00};
 static uint8_t peak_hci_match_index;
+#endif
 
 static void lpuart1_write_byte(uint8_t b) {
     bool was_blocked = false;
@@ -87,12 +95,14 @@ static void lpuart1_write_str(const char *s) {
 }
 #endif
 
+#if PBDRV_CONFIG_BLUETOOTH_PEAK_HCI_PROBE
 static void lpuart1_send_hci_reset(void) {
     for (uint32_t i = 0; i < sizeof(peak_hci_reset_cmd); i++) {
         lpuart1_write_byte(peak_hci_reset_cmd[i]);
     }
     peak_lpuart1_hci_reset_sent_count++;
 }
+#endif
 
 #if PBDRV_CONFIG_UART_STM32H7_LL_IRQ
 const pbdrv_uart_stm32h7_ll_irq_platform_data_t
@@ -221,6 +231,7 @@ void USART1_IRQHandler(void) {
 #endif
 }
 
+#if !(PBDRV_CONFIG_BLUETOOTH_PEAK_ENABLE_STUBS && PBDRV_CONFIG_BLUETOOTH_BTSTACK)
 void LPUART1_IRQHandler(void) {
     uint32_t isr = PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE->ISR;
 
@@ -288,6 +299,56 @@ void LPUART1_IRQHandler(void) {
 
     peak_lpuart1_irq_count++;
 }
+#endif
+
+#if PBDRV_CONFIG_BLUETOOTH_PEAK_ENABLE_STUBS && PBDRV_CONFIG_BLUETOOTH_BTSTACK
+// Bluetooth transport platform-data stubs for future PeakHub enablement.
+// NOTE: LPUART1 on STM32H743 commonly routes through BDMA resources. The
+// current btstack_stm32_hal driver uses DMA stream handles, so DMA fields are
+// placeholders until BDMA support is added.
+const pbdrv_bluetooth_btstack_stm32_platform_data_t pbdrv_bluetooth_btstack_stm32_platform_data = {
+    .enable_gpio = {
+        .bank = PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PORT,
+        .pin = PBDRV_CONFIG_BLUETOOTH_PEAK_RESET_PIN,
+    },
+    .uart = PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE,
+    .uart_irq = PBDRV_CONFIG_BLUETOOTH_PEAK_UART_IRQ,
+    .tx_dma = NULL,
+    .tx_dma_ch = 0,
+    .tx_dma_irq = DMA1_Stream0_IRQn,
+    .rx_dma = NULL,
+    .rx_dma_ch = 0,
+    .rx_dma_irq = DMA1_Stream1_IRQn,
+};
+
+void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
+    if (huart->Instance == PBDRV_CONFIG_BLUETOOTH_PEAK_UART_INSTANCE) {
+        GPIO_InitTypeDef gpio_init;
+
+        gpio_init.Mode = GPIO_MODE_AF_PP;
+        gpio_init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+        gpio_init.Pull = GPIO_PULLUP;
+        gpio_init.Alternate = GPIO_AF8_LPUART;
+
+        gpio_init.Pin = (1u << PBDRV_CONFIG_BLUETOOTH_PEAK_UART_TX_PIN)
+                      | (1u << PBDRV_CONFIG_BLUETOOTH_PEAK_UART_RX_PIN);
+        HAL_GPIO_Init(GPIOB, &gpio_init);
+    }
+}
+
+void LPUART1_IRQHandler(void) {
+    pbdrv_bluetooth_btstack_stm32_hal_handle_uart_irq();
+}
+
+const pbdrv_bluetooth_btstack_platform_data_t pbdrv_bluetooth_btstack_platform_data = {
+    .transport_instance = pbdrv_bluetooth_btstack_stm32_hal_transport_instance,
+    .transport_config = pbdrv_bluetooth_btstack_stm32_hal_transport_config,
+    .chipset_instance = btstack_chipset_zephyr_instance,
+    .control_instance = pbdrv_bluetooth_btstack_stm32_hal_control_instance,
+    .er_key = (const uint8_t *)UID_BASE,
+    .ir_key = (const uint8_t *)UID_BASE,
+};
+#endif
 
 #if PBDRV_CONFIG_USB_STM32H7
 void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd) {

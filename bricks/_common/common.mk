@@ -122,18 +122,19 @@ ifeq ($(PB_LIB_BLE5STACK),1)
 INC += -I$(PBTOP)/lib/ble5stack/central
 endif
 ifeq ($(PB_LIB_BTSTACK),1)
-INC += -I$(PBTOP)/lib/btstack/chipset/cc256x
-INC += -I$(PBTOP)/lib/btstack/src
+INC += -I$(TOP)/lib/btstack/chipset/cc256x
+INC += -I$(TOP)/lib/btstack/chipset/zephyr
+INC += -I$(TOP)/lib/btstack/src
 ifeq ($(PB_MCU_FAMILY),native)
-INC += -I$(PBTOP)/lib/btstack/platform/posix
-INC += -I$(PBTOP)/lib/btstack/platform/embedded
-INC += -I$(PBTOP)/lib/btstack/3rd-party/tinydir
-INC += -I$(PBTOP)/lib/btstack/3rd-party/rijndael
-INC += -I$(PBTOP)/lib/btstack/3rd-party/micro-ecc
-INC += -I$(PBTOP)/lib/btstack/chipset/bcm
-INC += -I$(PBTOP)/lib/btstack/chipset/intel
-INC += -I$(PBTOP)/lib/btstack/chipset/realtek
-INC += -I$(PBTOP)/lib/btstack/chipset/zephyr
+INC += -I$(TOP)/lib/btstack/platform/posix
+INC += -I$(TOP)/lib/btstack/platform/embedded
+INC += -I$(TOP)/lib/btstack/3rd-party/tinydir
+INC += -I$(TOP)/lib/btstack/3rd-party/rijndael
+INC += -I$(TOP)/lib/btstack/3rd-party/micro-ecc
+INC += -I$(TOP)/lib/btstack/chipset/bcm
+INC += -I$(TOP)/lib/btstack/chipset/intel
+INC += -I$(TOP)/lib/btstack/chipset/realtek
+INC += -I$(TOP)/lib/btstack/chipset/zephyr
 ifneq ($(CI_MODE),1)
 INC += $(shell pkg-config libusb-1.0 --cflags)
 endif
@@ -421,6 +422,12 @@ BTSTACK_BLE_SRC_C += $(addprefix lib/btstack/src/ble/,\
 BTSTACK_SRC_C += $(addprefix lib/btstack/chipset/cc256x/,\
 	btstack_chipset_cc256x.c \
 	)
+
+ifneq ($(PB_MCU_FAMILY),native)
+BTSTACK_SRC_C += $(addprefix lib/btstack/chipset/zephyr/,\
+	btstack_chipset_zephyr.c \
+	)
+endif
 
 # libusb-specific BTStack sources for virtual_hub
 ifeq ($(PB_MCU_FAMILY),native)

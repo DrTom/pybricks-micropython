@@ -6,7 +6,7 @@
 #ifndef _INTERNAL_PBDRV_BLUETOOTH_BTSTACK_STM32_HAL_H_
 #define _INTERNAL_PBDRV_BLUETOOTH_BTSTACK_STM32_HAL_H_
 
-#include <stm32f4xx.h>
+#include STM32_HAL_H
 #include <hci_transport.h>
 #include <btstack.h>
 
@@ -24,13 +24,13 @@ typedef struct {
     pbdrv_gpio_t enable_gpio;
     /** UART connected to the Bluetooth chip. */
     USART_TypeDef *uart;
-    /** UART transmit DMA stream. */
-    DMA_Stream_TypeDef *tx_dma;
-    /** UART receive DMA stream. */
-    DMA_Stream_TypeDef *rx_dma;
-    /** UART transmit DMA channel. */
+    /** UART transmit DMA/BDMA instance. */
+    void *tx_dma;
+    /** UART receive DMA/BDMA instance. */
+    void *rx_dma;
+    /** UART transmit DMA channel/request selector. */
     uint32_t tx_dma_ch;
-    /** UART receive DMA channel. */
+    /** UART receive DMA channel/request selector. */
     uint32_t rx_dma_ch;
     /** UART interrupt. */
     IRQn_Type uart_irq;

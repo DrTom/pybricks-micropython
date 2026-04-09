@@ -12,9 +12,7 @@
 
 #include <btstack.h>
 #undef UNUSED // btstack and stm32 both define UNUSED
-#include <stm32f4xx_hal.h>
-#include <stm32f4xx_ll_rcc.h>
-#include <stm32f4xx_ll_usart.h>
+#include STM32_HAL_H
 
 #include "bluetooth_btstack.h"
 #include "bluetooth_btstack_stm32_hal.h"
@@ -25,6 +23,18 @@
 #include <pbdrv/gpio.h>
 
 #include <pbio/error.h>
+
+#ifndef PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_INIT
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_INIT 115200
+#endif
+
+#ifndef PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_MAIN
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_MAIN 3000000
+#endif
+
+#ifndef PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_FLOWCONTROL
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_FLOWCONTROL 1
+#endif
 
 pbio_error_t pbdrv_bluetooth_btstack_platform_init(void) {
     return PBIO_SUCCESS;
@@ -41,6 +51,7 @@ const pbdrv_bluetooth_btstack_chipset_info_t *pbdrv_bluetooth_btstack_set_chipse
     const pbdrv_bluetooth_btstack_platform_data_t *pdata =
         &pbdrv_bluetooth_btstack_platform_data;
 
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_CC2564C
     // All platforms supported by this abstraction use a cc2560x with the same
     // init script.
     extern const pbdrv_bluetooth_btstack_chipset_info_t cc2564c_info;
@@ -49,6 +60,17 @@ const pbdrv_bluetooth_btstack_chipset_info_t *pbdrv_bluetooth_btstack_set_chipse
     // Needed to apply init script.
     hci_set_chipset(pdata->chipset_instance());
     return &cc2564c_info;
+#else
+    static const pbdrv_bluetooth_btstack_chipset_info_t generic_h4_chipset_info = {
+        .supports_ble = true,
+    };
+
+    if (pdata->chipset_instance) {
+        hci_set_chipset(pdata->chipset_instance());
+    }
+
+    return &generic_h4_chipset_info;
+#endif
 };
 
 static int btstack_control_gpio_on(void) {
@@ -98,6 +120,7 @@ static btstack_data_source_t transport_data_source;
 
 static volatile bool send_complete;
 static volatile bool receive_complete;
+static bool btstack_use_dma;
 
 // callbacks
 static void (*block_sent)(void);
@@ -119,35 +142,47 @@ static int btstack_stm32_hal_init(const btstack_uart_config_t *config) {
 
     uart_config = config;
 
-    btstack_tx_hdma.Instance = pdata->tx_dma;
-    btstack_tx_hdma.Init.Channel = pdata->tx_dma_ch;
-    btstack_tx_hdma.Init.Direction = DMA_MEMORY_TO_PERIPH;
-    btstack_tx_hdma.Init.PeriphInc = DMA_PINC_DISABLE;
-    btstack_tx_hdma.Init.MemInc = DMA_MINC_ENABLE;
-    btstack_tx_hdma.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
-    btstack_tx_hdma.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-    btstack_tx_hdma.Init.Mode = DMA_NORMAL;
-    btstack_tx_hdma.Init.Priority = DMA_PRIORITY_VERY_HIGH;
-    btstack_tx_hdma.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
-    btstack_tx_hdma.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_1QUARTERFULL;
-    btstack_tx_hdma.Init.MemBurst = DMA_MBURST_SINGLE;
-    btstack_tx_hdma.Init.PeriphBurst = DMA_PBURST_SINGLE;
-    HAL_DMA_Init(&btstack_tx_hdma);
+    btstack_use_dma = pdata->tx_dma != NULL && pdata->rx_dma != NULL;
 
-    btstack_rx_hdma.Instance = pdata->rx_dma;
-    btstack_rx_hdma.Init.Channel = pdata->rx_dma_ch;
-    btstack_rx_hdma.Init.Direction = DMA_PERIPH_TO_MEMORY;
-    btstack_rx_hdma.Init.PeriphInc = DMA_PINC_DISABLE;
-    btstack_rx_hdma.Init.MemInc = DMA_MINC_ENABLE;
-    btstack_rx_hdma.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
-    btstack_rx_hdma.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-    btstack_rx_hdma.Init.Mode = DMA_NORMAL;
-    btstack_rx_hdma.Init.Priority = DMA_PRIORITY_VERY_HIGH;
-    btstack_rx_hdma.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
-    btstack_rx_hdma.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_1QUARTERFULL;
-    btstack_rx_hdma.Init.MemBurst = DMA_MBURST_SINGLE;
-    btstack_rx_hdma.Init.PeriphBurst = DMA_PBURST_SINGLE;
-    HAL_DMA_Init(&btstack_rx_hdma);
+    if (btstack_use_dma) {
+        btstack_tx_hdma.Instance = pdata->tx_dma;
+        #if defined(STM32H7)
+        btstack_tx_hdma.Init.Request = pdata->tx_dma_ch;
+        #else
+        btstack_tx_hdma.Init.Channel = pdata->tx_dma_ch;
+        #endif
+        btstack_tx_hdma.Init.Direction = DMA_MEMORY_TO_PERIPH;
+        btstack_tx_hdma.Init.PeriphInc = DMA_PINC_DISABLE;
+        btstack_tx_hdma.Init.MemInc = DMA_MINC_ENABLE;
+        btstack_tx_hdma.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+        btstack_tx_hdma.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+        btstack_tx_hdma.Init.Mode = DMA_NORMAL;
+        btstack_tx_hdma.Init.Priority = DMA_PRIORITY_VERY_HIGH;
+        btstack_tx_hdma.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+        btstack_tx_hdma.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_1QUARTERFULL;
+        btstack_tx_hdma.Init.MemBurst = DMA_MBURST_SINGLE;
+        btstack_tx_hdma.Init.PeriphBurst = DMA_PBURST_SINGLE;
+        HAL_DMA_Init(&btstack_tx_hdma);
+
+        btstack_rx_hdma.Instance = pdata->rx_dma;
+        #if defined(STM32H7)
+        btstack_rx_hdma.Init.Request = pdata->rx_dma_ch;
+        #else
+        btstack_rx_hdma.Init.Channel = pdata->rx_dma_ch;
+        #endif
+        btstack_rx_hdma.Init.Direction = DMA_PERIPH_TO_MEMORY;
+        btstack_rx_hdma.Init.PeriphInc = DMA_PINC_DISABLE;
+        btstack_rx_hdma.Init.MemInc = DMA_MINC_ENABLE;
+        btstack_rx_hdma.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+        btstack_rx_hdma.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+        btstack_rx_hdma.Init.Mode = DMA_NORMAL;
+        btstack_rx_hdma.Init.Priority = DMA_PRIORITY_VERY_HIGH;
+        btstack_rx_hdma.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+        btstack_rx_hdma.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_1QUARTERFULL;
+        btstack_rx_hdma.Init.MemBurst = DMA_MBURST_SINGLE;
+        btstack_rx_hdma.Init.PeriphBurst = DMA_PBURST_SINGLE;
+        HAL_DMA_Init(&btstack_rx_hdma);
+    }
 
     btstack_huart.Instance = pdata->uart;
     btstack_huart.Init.BaudRate = config->baudrate;
@@ -157,15 +192,28 @@ static int btstack_stm32_hal_init(const btstack_uart_config_t *config) {
     btstack_huart.Init.Mode = UART_MODE_TX_RX;
     btstack_huart.Init.HwFlowCtl = config->flowcontrol ? UART_HWCONTROL_RTS_CTS : UART_HWCONTROL_NONE;
     btstack_huart.Init.OverSampling = UART_OVERSAMPLING_16;
+    #if defined(STM32H7)
+    btstack_huart.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+    btstack_huart.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+    btstack_huart.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+    btstack_huart.FifoMode = UART_FIFOMODE_DISABLE;
+    #endif
     HAL_UART_Init(&btstack_huart);
+    #if defined(STM32H7)
+    HAL_UARTEx_DisableFifoMode(&btstack_huart);
+    #endif
 
-    __HAL_LINKDMA(&btstack_huart, hdmatx, btstack_tx_hdma);
-    __HAL_LINKDMA(&btstack_huart, hdmarx, btstack_rx_hdma);
+    if (btstack_use_dma) {
+        __HAL_LINKDMA(&btstack_huart, hdmatx, btstack_tx_hdma);
+        __HAL_LINKDMA(&btstack_huart, hdmarx, btstack_rx_hdma);
+    }
 
-    HAL_NVIC_SetPriority(pdata->tx_dma_irq, 1, 2);
-    HAL_NVIC_EnableIRQ(pdata->tx_dma_irq);
-    HAL_NVIC_SetPriority(pdata->rx_dma_irq, 1, 1);
-    HAL_NVIC_EnableIRQ(pdata->rx_dma_irq);
+    if (btstack_use_dma) {
+        HAL_NVIC_SetPriority(pdata->tx_dma_irq, 1, 2);
+        HAL_NVIC_EnableIRQ(pdata->tx_dma_irq);
+        HAL_NVIC_SetPriority(pdata->rx_dma_irq, 1, 1);
+        HAL_NVIC_EnableIRQ(pdata->rx_dma_irq);
+    }
     HAL_NVIC_SetPriority(pdata->uart_irq, 1, 0);
     HAL_NVIC_EnableIRQ(pdata->uart_irq);
 
@@ -194,31 +242,8 @@ static void btstack_stm32_hal_process(btstack_data_source_t *ds, btstack_data_so
 }
 
 static int btstack_stm32_hal_set_baudrate(uint32_t baud) {
-    USART_TypeDef *usart = btstack_huart.Instance;
-    uint32_t periphclk = LL_RCC_PERIPH_FREQUENCY_NO;
-    LL_RCC_ClocksTypeDef rcc_clocks;
-
-    // This assumes STM32F4
-    LL_RCC_GetSystemClocksFreq(&rcc_clocks);
-    if (usart == USART1
-        #if defined(USART6)
-        || usart == USART6
-        #endif
-        #if defined(UART9)
-        || usart == UART9
-        #endif
-        #if defined(UART10)
-        || usart == UART10
-        #endif
-        ) {
-        periphclk = rcc_clocks.PCLK2_Frequency;
-    } else {
-        periphclk = rcc_clocks.PCLK1_Frequency;
-    }
-
-    LL_USART_SetBaudRate(usart, periphclk, LL_USART_OVERSAMPLING_16, baud);
-
-    return 0;
+    btstack_huart.Init.BaudRate = baud;
+    return HAL_UART_Init(&btstack_huart) == HAL_OK ? 0 : -1;
 }
 
 static int btstack_stm32_hal_open(void) {
@@ -253,11 +278,19 @@ static int btstack_stm32_hal_set_parity(int parity) {
 }
 
 static void btstack_stm32_hal_receive_block(uint8_t *buffer, uint16_t len) {
-    HAL_UART_Receive_DMA(&btstack_huart, buffer, len);
+    if (btstack_use_dma) {
+        HAL_UART_Receive_DMA(&btstack_huart, buffer, len);
+    } else {
+        HAL_UART_Receive_IT(&btstack_huart, buffer, len);
+    }
 }
 
 static void btstack_stm32_hal_send_block(const uint8_t *data, uint16_t size) {
-    HAL_UART_Transmit_DMA(&btstack_huart, (uint8_t *)data, size);
+    if (btstack_use_dma) {
+        HAL_UART_Transmit_DMA(&btstack_huart, (uint8_t *)data, size);
+    } else {
+        HAL_UART_Transmit_IT(&btstack_huart, (uint8_t *)data, size);
+    }
 }
 
 static const btstack_uart_block_t btstack_stm32_hal = {
@@ -281,25 +314,26 @@ const hci_transport_t *pbdrv_bluetooth_btstack_stm32_hal_transport_instance(void
 }
 
 const void *pbdrv_bluetooth_btstack_stm32_hal_transport_config(void) {
-    // Note on baud rate: with a 48MHz clock, 3000000 baud is the highest we can
-    // go with LL_USART_OVERSAMPLING_16. With LL_USART_OVERSAMPLING_8 we could
-    // go to 4000000, which is the max rating of the CC2564C.
     static const hci_transport_config_uart_t config = {
         .type = HCI_TRANSPORT_CONFIG_UART,
-        .baudrate_init = 115200,
-        .baudrate_main = 3000000,
-        .flowcontrol = 1,
+        .baudrate_init = PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_INIT,
+        .baudrate_main = PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_MAIN,
+        .flowcontrol = PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_FLOWCONTROL,
         .device_name = NULL,
     };
     return &config;
 }
 
 void pbdrv_bluetooth_btstack_stm32_hal_handle_tx_dma_irq(void) {
-    HAL_DMA_IRQHandler(&btstack_tx_hdma);
+    if (btstack_use_dma) {
+        HAL_DMA_IRQHandler(&btstack_tx_hdma);
+    }
 }
 
 void pbdrv_bluetooth_btstack_stm32_hal_handle_rx_dma_irq(void) {
-    HAL_DMA_IRQHandler(&btstack_rx_hdma);
+    if (btstack_use_dma) {
+        HAL_DMA_IRQHandler(&btstack_rx_hdma);
+    }
 }
 
 void pbdrv_bluetooth_btstack_stm32_hal_handle_uart_irq(void) {
