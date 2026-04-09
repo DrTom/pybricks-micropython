@@ -48,6 +48,20 @@
 
 #define DEBUG 0
 
+#ifndef PBDRV_CONFIG_BLUETOOTH_BTSTACK_AUTO_RESTART_ADVERTISING_ON_DISCONNECT
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_AUTO_RESTART_ADVERTISING_ON_DISCONNECT (0)
+#endif
+
+#ifndef PBDRV_CONFIG_BLUETOOTH_BTSTACK_ADVERTISE_CMD_TIMEOUT_MS
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_ADVERTISE_CMD_TIMEOUT_MS (1000)
+#endif
+
+#ifndef PBDRV_CONFIG_BLUETOOTH_BTSTACK_IMMEDIATE_READVERTISE_ON_DISCONNECT
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_IMMEDIATE_READVERTISE_ON_DISCONNECT (0)
+#endif
+
+static void init_advertising_data(void);
+
 #if DEBUG
 #include <pbio/debug.h>
 #define DEBUG_PRINT pbio_debug
@@ -417,6 +431,17 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 host->pybricks_configured = false;
                 host->uart_configured = false;
                 pbdrv_bluetooth_host_connection_changed();
+
+                #if PBDRV_CONFIG_BLUETOOTH_BTSTACK_AUTO_RESTART_ADVERTISING_ON_DISCONNECT
+                #if PBDRV_CONFIG_BLUETOOTH_BTSTACK_IMMEDIATE_READVERTISE_ON_DISCONNECT
+                init_advertising_data();
+                gap_advertisements_enable(true);
+                pbdrv_bluetooth_advertising_state = PBDRV_BLUETOOTH_ADVERTISING_STATE_ADVERTISING_PYBRICKS;
+                #else
+                pbdrv_bluetooth_start_advertising(true);
+                #endif
+                #endif
+
                 DEBUG_PRINT("Host with handle %u disconnected\n", handle);
             } else {
                 for (uint8_t i = 0; i < PBDRV_CONFIG_BLUETOOTH_NUM_PERIPHERALS; i++) {
@@ -585,6 +610,8 @@ pbio_error_t pbdrv_bluetooth_start_advertising_func(pbio_os_state_t *state, void
 
     PBIO_OS_ASYNC_BEGIN(state);
 
+    static pbio_os_timer_t timer;
+
     pbdrv_bluetooth_btstack_host_connection_t *host = pbdrv_bluetooth_btstack_get_host_connection(HCI_CON_HANDLE_INVALID);
     if (host == NULL) {
         // There should be at least one available host connection. Otherwise
@@ -595,7 +622,15 @@ pbio_error_t pbdrv_bluetooth_start_advertising_func(pbio_os_state_t *state, void
     init_advertising_data();
     gap_advertisements_enable(true);
 
-    PBIO_OS_AWAIT_UNTIL(state, event_packet && HCI_EVENT_IS_COMMAND_COMPLETE(event_packet, hci_le_set_advertise_enable));
+    pbio_os_timer_set(&timer, PBDRV_CONFIG_BLUETOOTH_BTSTACK_ADVERTISE_CMD_TIMEOUT_MS);
+
+    PBIO_OS_AWAIT_UNTIL(state,
+        pbio_os_timer_is_expired(&timer) ||
+        (event_packet && HCI_EVENT_IS_COMMAND_COMPLETE(event_packet, hci_le_set_advertise_enable)));
+
+    if (pbio_os_timer_is_expired(&timer)) {
+        return PBIO_ERROR_TIMEDOUT;
+    }
 
     pbdrv_bluetooth_advertising_state = PBDRV_BLUETOOTH_ADVERTISING_STATE_ADVERTISING_PYBRICKS;
 

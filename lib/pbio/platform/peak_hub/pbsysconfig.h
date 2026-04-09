@@ -14,6 +14,7 @@
 #define PBSYS_CONFIG_HMI_STOP_BUTTON                (0)
 #define PBSYS_CONFIG_HMI_NONE                       (1)
 #define PBSYS_CONFIG_HMI_NONE_STARTS_REPL           (0)
+#define PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE        (1)
 #define PBSYS_CONFIG_HMI_NUM_SLOTS                  (0)
 #define PBSYS_CONFIG_HUB_LIGHT_MATRIX               (0)
 #define PBSYS_CONFIG_HOST                           (1)

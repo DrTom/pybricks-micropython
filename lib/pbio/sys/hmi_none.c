@@ -14,11 +14,16 @@
 
 #include <pbio/button.h>
 #include <pbio/os.h>
+#include <pbdrv/bluetooth.h>
 #include <pbsys/main.h>
 #include <pbsys/status.h>
 
 #ifndef PBSYS_CONFIG_HMI_NONE_STARTS_REPL
 #define PBSYS_CONFIG_HMI_NONE_STARTS_REPL (1)
+#endif
+
+#ifndef PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE
+#define PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE (0)
 #endif
 
 void pbsys_hmi_init(void) {
@@ -33,6 +38,10 @@ void pbsys_hmi_stop_animation(void) {
 pbio_error_t pbsys_hmi_await_program_selection(void) {
 
     do {
+        #if PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE
+        pbdrv_bluetooth_start_advertising(true);
+        #endif
+
         if (pbsys_status_test(PBIO_PYBRICKS_STATUS_SHUTDOWN_REQUEST)) {
             return PBIO_ERROR_CANCELED;
         }

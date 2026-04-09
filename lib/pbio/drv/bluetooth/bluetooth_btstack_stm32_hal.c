@@ -465,10 +465,20 @@ static void btstack_stm32_hal_receive_block(uint8_t *buffer, uint16_t len) {
     pbdrv_btstack_stm32_uart_recv_block_count++;
     pbdrv_btstack_stm32_uart_recv_bytes += len;
 #endif
+    HAL_StatusTypeDef hal_status;
+
     if (btstack_use_dma) {
-        HAL_UART_Receive_DMA(&btstack_huart, buffer, len);
+        hal_status = HAL_UART_Receive_DMA(&btstack_huart, buffer, len);
+        if (hal_status != HAL_OK) {
+            HAL_UART_AbortReceive(&btstack_huart);
+            (void)HAL_UART_Receive_DMA(&btstack_huart, buffer, len);
+        }
     } else {
-        HAL_UART_Receive_IT(&btstack_huart, buffer, len);
+        hal_status = HAL_UART_Receive_IT(&btstack_huart, buffer, len);
+        if (hal_status != HAL_OK) {
+            HAL_UART_AbortReceive(&btstack_huart);
+            (void)HAL_UART_Receive_IT(&btstack_huart, buffer, len);
+        }
     }
 }
 
@@ -477,10 +487,20 @@ static void btstack_stm32_hal_send_block(const uint8_t *data, uint16_t size) {
     pbdrv_btstack_stm32_uart_send_block_count++;
     pbdrv_btstack_stm32_uart_send_bytes += size;
 #endif
+    HAL_StatusTypeDef hal_status;
+
     if (btstack_use_dma) {
-        HAL_UART_Transmit_DMA(&btstack_huart, (uint8_t *)data, size);
+        hal_status = HAL_UART_Transmit_DMA(&btstack_huart, (uint8_t *)data, size);
+        if (hal_status != HAL_OK) {
+            HAL_UART_AbortTransmit(&btstack_huart);
+            (void)HAL_UART_Transmit_DMA(&btstack_huart, (uint8_t *)data, size);
+        }
     } else {
-        HAL_UART_Transmit_IT(&btstack_huart, (uint8_t *)data, size);
+        hal_status = HAL_UART_Transmit_IT(&btstack_huart, (uint8_t *)data, size);
+        if (hal_status != HAL_OK) {
+            HAL_UART_AbortTransmit(&btstack_huart);
+            (void)HAL_UART_Transmit_IT(&btstack_huart, (uint8_t *)data, size);
+        }
     }
 }
 
