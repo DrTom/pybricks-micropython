@@ -24,9 +24,10 @@
 #define PBDRV_CONFIG_BLUETOOTH_PEAK_UART_RX_PIN     7  // PB7 (smoke-test mapping)
 #define PBDRV_CONFIG_BLUETOOTH_PEAK_HCI_PROBE       (0)
 #define PBDRV_CONFIG_BLUETOOTH_PEAK_FLOW_PROBE      (1)
-// Planned BTstack UART rates for ESP32-S3 H:4 controller tests.
-#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_INIT 1000000
-#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_MAIN 1000000
+// Conservative baseline for ESP32-S3 H:4 bring-up over jumper wiring.
+// Raise after stability is confirmed with current hardware path.
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_INIT 115200
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_BAUDRATE_MAIN 115200
 #define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_FLOWCONTROL 0
 #define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY 1
 // Reserved placeholder GPIOs for future BT flow control wiring.
