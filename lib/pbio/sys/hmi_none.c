@@ -52,6 +52,13 @@ pbio_error_t pbsys_hmi_await_program_selection(void) {
     return pbsys_main_program_request_start(PBIO_PYBRICKS_USER_PROGRAM_ID_REPL, PBSYS_MAIN_PROGRAM_START_REQUEST_TYPE_BOOT);
     #else
     while (!pbsys_main_program_start_is_requested()) {
+        // Keep requesting advertising so that failed or timed-out attempts
+        // are retried. pbdrv_bluetooth_start_advertising() is a no-op if
+        // already advertising or if advertising state is confirmed.
+        #if PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE
+        pbdrv_bluetooth_start_advertising(true);
+        #endif
+
         if (pbsys_status_test(PBIO_PYBRICKS_STATUS_SHUTDOWN_REQUEST)) {
             return PBIO_ERROR_CANCELED;
         }

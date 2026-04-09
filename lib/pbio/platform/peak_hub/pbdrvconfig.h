@@ -31,7 +31,10 @@
 #define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_FLOWCONTROL 0
 #define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY 1
 #define PBDRV_CONFIG_BLUETOOTH_BTSTACK_AUTO_RESTART_ADVERTISING_ON_DISCONNECT 1
-#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_IMMEDIATE_READVERTISE_ON_DISCONNECT 1
+// Disable immediate path: it sets advertising state optimistically before HCI
+// command-complete is confirmed, which prevents all retry attempts on failure.
+// Use the async advertising_or_scan_func path instead, which awaits confirmation.
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_IMMEDIATE_READVERTISE_ON_DISCONNECT 0
 // Reserved placeholder GPIOs for future BT flow control wiring.
 #define PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PORT        GPIOD
 #define PBDRV_CONFIG_BLUETOOTH_PEAK_RTS_PIN         8
