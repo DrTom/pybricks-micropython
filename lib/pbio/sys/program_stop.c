@@ -20,6 +20,14 @@ static pbio_button_flags_t stop_buttons = PBSYS_CONFIG_HMI_STOP_BUTTON;
 // State for button press one-shot
 static bool stop_button_pressed;
 
+// Crash diagnostics (read via debugger)
+volatile uint32_t pbsys_program_stop_diag_poll_count;
+volatile uint32_t pbsys_program_stop_diag_last_btn;
+volatile uint32_t pbsys_program_stop_diag_shutdown_seen;
+volatile uint32_t pbsys_program_stop_diag_stop_request_count;
+volatile uint32_t pbsys_program_stop_diag_forced_stop_count;
+volatile uint32_t pbsys_program_stop_diag_soft_stop_count;
+
 /**
  * Request the user program to stop. For example, in MicroPython, this may raise
  * a SystemExit exception.
@@ -58,6 +66,8 @@ void pbsys_program_stop_set_buttons(pbio_button_flags_t buttons) {
 void pbsys_program_stop_poll(void) {
 
     pbio_button_flags_t btn = pbdrv_button_get_pressed();
+    pbsys_program_stop_diag_poll_count++;
+    pbsys_program_stop_diag_last_btn = btn;
 
     if (btn & PBSYS_CONFIG_HMI_STOP_BUTTON) {
         pbsys_status_set(PBIO_PYBRICKS_STATUS_POWER_BUTTON_PRESSED);
@@ -72,6 +82,8 @@ void pbsys_program_stop_poll(void) {
 
     // Cancel user application program if shutdown was requested.
     if (pbsys_status_test(PBIO_PYBRICKS_STATUS_SHUTDOWN_REQUEST)) {
+        pbsys_program_stop_diag_shutdown_seen++;
+        pbsys_program_stop_diag_forced_stop_count++;
         pbsys_program_stop(true);
         return;
     }
@@ -83,6 +95,8 @@ void pbsys_program_stop_poll(void) {
     if ((btn & stop_buttons) == stop_buttons) {
         if (!stop_button_pressed) {
             stop_button_pressed = true;
+            pbsys_program_stop_diag_stop_request_count++;
+            pbsys_program_stop_diag_soft_stop_count++;
             pbsys_program_stop(false);
         }
     } else {

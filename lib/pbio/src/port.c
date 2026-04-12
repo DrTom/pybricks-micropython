@@ -20,6 +20,9 @@
 #include <pbio/port_dcm.h>
 #include <pbio/port_lump.h>
 
+#ifndef PBIO_CONFIG_PORT_LUMP_DIRECT_UART
+#define PBIO_CONFIG_PORT_LUMP_DIRECT_UART (0)
+#endif
 
 #define DEBUG 0
 #if DEBUG
@@ -92,9 +95,22 @@ struct _pbio_port_t {
 
 static pbio_port_t ports[PBIO_CONFIG_PORT_NUM_DEV];
 
+#if PBIO_CONFIG_PORT_LUMP_DIRECT_UART
+// Crash diagnostics for direct UART/LUMP mode (read via debugger)
+volatile uint32_t pbio_port_diag_direct_loop_count;
+volatile uint32_t pbio_port_diag_direct_state;
+volatile uint32_t pbio_port_diag_direct_sync_attempt_count;
+volatile uint32_t pbio_port_diag_direct_sync_err_count;
+volatile uint32_t pbio_port_diag_direct_sync_ok_count;
+volatile uint32_t pbio_port_diag_direct_data_session_count;
+volatile uint32_t pbio_port_diag_direct_last_err;
+#endif
+
+#if !PBIO_CONFIG_PORT_LUMP_DIRECT_UART
 static bool pbio_port_dcm_test_type_id(pbio_port_t *port, lego_device_type_id_t range) {
     return pbio_port_dcm_assert_type_id(port->connection_manager, &range) == PBIO_SUCCESS;
 }
+#endif
 
 /**
  * This is the high level process that monitors and drives official LEGO
@@ -119,10 +135,41 @@ static pbio_error_t pbio_port_process_lego_dcm_thread(pbio_os_state_t *state, vo
 
     PBIO_OS_ASYNC_BEGIN(state);
 
+
     // NB: Currently only implements LEGO mode and assumes that all PUP
     // peripherals are available and initialized.
 
     for (;;) {
+        #if PBIO_CONFIG_PORT_LUMP_DIRECT_UART
+        pbio_port_diag_direct_loop_count++;
+        pbio_port_diag_direct_state = 1;
+        // Direct-wired mode for platforms without LEGO-style resistor-ID and
+        // UART-buffer multiplexing hardware. Reuse regular LUMP sync/data
+        // threads, but skip the passive PUP detection sequence.
+        pbio_port_p1p2_set_power(port, PBIO_PORT_POWER_REQUIREMENTS_NONE);
+        pbdrv_ioport_p5p6_set_mode(port->pdata->pins, PBDRV_IOPORT_P5P6_MODE_UART);
+        pbio_port_diag_direct_state = 2;
+        pbio_port_diag_direct_sync_attempt_count++;
+        PBIO_OS_AWAIT(state, &port->child1, err = pbio_port_lump_sync_thread(&port->child1, port->lump_dev, port->uart_dev, &port->timer));
+        pbio_port_diag_direct_last_err = err;
+
+        if (err != PBIO_SUCCESS) {
+            pbio_port_diag_direct_state = 3;
+            pbio_port_diag_direct_sync_err_count++;
+            continue;
+        }
+
+        pbio_port_diag_direct_state = 4;
+        pbio_port_diag_direct_sync_ok_count++;
+        pbio_port_p1p2_set_power(port, pbio_port_lump_get_power_requirements(port->lump_dev));
+        pbio_port_diag_direct_data_session_count++;
+        pbio_port_diag_direct_state = 5;
+        PBIO_OS_AWAIT_RACE(state, &port->child1, &port->child2,
+            pbio_port_lump_data_recv_thread(&port->child1, port->lump_dev, port->uart_dev),
+            pbio_port_lump_data_send_thread(&port->child2, port->lump_dev, port->uart_dev, &port->timer)
+            );
+        pbio_port_diag_direct_state = 6;
+        #else
         // Run passive device connection manager until smart device is detected.
         pbdrv_ioport_p5p6_set_mode(port->pdata->pins, PBDRV_IOPORT_P5P6_MODE_GPIO_ADC);
         pbio_port_p1p2_set_power(port, PBIO_PORT_POWER_REQUIREMENTS_NONE);
@@ -147,6 +194,7 @@ static pbio_error_t pbio_port_process_lego_dcm_thread(pbio_os_state_t *state, vo
                 pbio_port_lump_data_send_thread(&port->child2, port->lump_dev, port->uart_dev, &port->timer)
                 );
         }
+        #endif
     }
 
     // Unreachable.
@@ -535,9 +583,11 @@ void pbio_port_stop_user_actions(bool reset) {
         }
 
         // Stops and resets motors. Also stops higher level controls like servo.
+#if PBIO_CONFIG_DCMOTOR
         if (port->dcmotor) {
             pbio_dcmotor_reset(port->dcmotor, reset);
         }
+#endif
     }
 }
 

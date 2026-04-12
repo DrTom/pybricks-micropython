@@ -2,7 +2,9 @@
 
 #include <pbdrv/config.h>
 
+#include <pbdrv/ioport.h>
 #include <pbdrv/uart.h>
+#include <pbio/port_interface.h>
 
 #if PBDRV_CONFIG_USB_STM32H7
 #include <pbdrv/usb.h>
@@ -44,6 +46,34 @@ enum {
     UART_PORT_G,
     UART_PORT_H,
 };
+
+#if PBDRV_CONFIG_IOPORT
+// Single direct-wired LUMP/UART port on USART6 (PC6/PC7).
+// This bypasses LEGO-style pin multiplexing hardware assumptions by mapping
+// p5/p6 directly to the same pins as uart_tx/uart_rx.
+const pbdrv_ioport_platform_data_t pbdrv_ioport_platform_data[PBDRV_CONFIG_IOPORT_NUM_DEV] = {
+    {
+        .port_id = PBIO_PORT_ID_A,
+        .motor_driver_index = PBDRV_IOPORT_INDEX_NOT_AVAILABLE,
+        .i2c_driver_index = PBDRV_IOPORT_INDEX_NOT_AVAILABLE,
+        .uart_driver_index = UART_PORT_D,
+        .external_port_index = 0,
+        .counter_driver_index = PBDRV_IOPORT_INDEX_NOT_AVAILABLE,
+        .pins = &(pbdrv_ioport_pins_t) {
+            .p5 = { .bank = GPIOC, .pin = 6 },
+            .p6 = { .bank = GPIOC, .pin = 7 },
+            // No hardware UART buffer select on this breakout. Use an unused
+            // GPIO as a harmless placeholder for ioport mode toggling.
+            .uart_buf = { .bank = GPIOA, .pin = 4 },
+            .uart_tx = { .bank = GPIOC, .pin = 6 },
+            .uart_rx = { .bank = GPIOC, .pin = 7 },
+            .uart_tx_alt_uart = GPIO_AF7_USART6,
+            .uart_rx_alt_uart = GPIO_AF7_USART6,
+        },
+        .supported_modes = PBIO_PORT_MODE_LEGO_DCM | PBIO_PORT_MODE_UART,
+    },
+};
+#endif
 
 volatile uint32_t peak_lpuart1_irq_count;
 volatile uint32_t peak_lpuart1_rx_count;

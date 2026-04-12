@@ -4,9 +4,9 @@
 
 #define PBDRV_CONFIG_BATTERY                        (0)
 
-#define PBDRV_CONFIG_BLUETOOTH                      (1)
-#define PBDRV_CONFIG_BLUETOOTH_BTSTACK              (1)
-#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32        (1)
+#define PBDRV_CONFIG_BLUETOOTH                      (0)
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK              (0)
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32        (0)
 #define PBDRV_CONFIG_BLUETOOTH_PEAK_ENABLE_STUBS    (1)
 #define PBDRV_CONFIG_BLUETOOTH_BTSTACK_NUM_LE_HOSTS (1)
 #define PBDRV_CONFIG_BLUETOOTH_BTSTACK_HUB_KIND     LWP3_HUB_KIND_TECHNIC_LARGE
@@ -60,8 +60,9 @@
 
 #define PBDRV_CONFIG_GPIO                           (0)
 
-#define PBDRV_CONFIG_IOPORT                         (0)
+#define PBDRV_CONFIG_IOPORT                         (1)
 #define PBDRV_CONFIG_IOPORT_HAS_UART                (1)
+#define PBDRV_CONFIG_IOPORT_NUM_DEV                 (1)
 
 #define PBDRV_CONFIG_LED                            (0)
 
