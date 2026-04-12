@@ -7,6 +7,10 @@
 
 #if PBDRV_CONFIG_BLUETOOTH
 
+#ifndef PBDRV_CONFIG_BLUETOOTH_ADVERTISE_TIMEOUT_RESET_THRESHOLD
+#define PBDRV_CONFIG_BLUETOOTH_ADVERTISE_TIMEOUT_RESET_THRESHOLD (0)
+#endif
+
 #include <stdint.h>
 
 #include <pbdrv/bluetooth.h>
@@ -615,6 +619,9 @@ pbio_error_t pbdrv_bluetooth_process_thread(pbio_os_state_t *state, void *contex
 
     static pbio_os_state_t sub;
     static pbio_os_timer_t timer;
+    #if PBDRV_CONFIG_BLUETOOTH_ADVERTISE_TIMEOUT_RESET_THRESHOLD
+    static uint8_t advertise_timeout_streak;
+    #endif
     pbio_error_t err;
 
     // Shorthand notation accessible throughout.
@@ -667,6 +674,20 @@ init:
         if (advertising_or_scan_func) {
             PBIO_OS_AWAIT(state, &sub, advertising_or_scan_err = advertising_or_scan_func(&sub, NULL));
             advertising_or_scan_func = NULL;
+
+#if PBDRV_CONFIG_BLUETOOTH_ADVERTISE_TIMEOUT_RESET_THRESHOLD
+            if (advertising_or_scan_err == PBIO_ERROR_TIMEDOUT) {
+                advertise_timeout_streak++;
+                if (advertise_timeout_streak >= PBDRV_CONFIG_BLUETOOTH_ADVERTISE_TIMEOUT_RESET_THRESHOLD) {
+                    DEBUG_PRINT("Advertising timed out repeatedly. Reinitializing Bluetooth.\n");
+                    advertise_timeout_streak = 0;
+                    pbdrv_bluetooth_advertising_state = PBDRV_BLUETOOTH_ADVERTISING_STATE_NONE;
+                    goto init;
+                }
+            } else if (advertising_or_scan_err == PBIO_SUCCESS) {
+                advertise_timeout_streak = 0;
+            }
+#endif
         }
 
         // Handle pending peripheral tasks, one at a time.

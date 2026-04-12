@@ -26,6 +26,10 @@
 #define PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE (0)
 #endif
 
+#ifndef PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE_PERIOD_MS
+#define PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE_PERIOD_MS (250)
+#endif
+
 void pbsys_hmi_init(void) {
 }
 
@@ -37,9 +41,17 @@ void pbsys_hmi_stop_animation(void) {
 
 pbio_error_t pbsys_hmi_await_program_selection(void) {
 
+    static pbio_os_timer_t auto_advertise_timer;
+    pbio_os_timer_set(&auto_advertise_timer, 0);
+
     do {
         #if PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE
-        pbdrv_bluetooth_start_advertising(true);
+        if (pbio_os_timer_is_expired(&auto_advertise_timer)) {
+            if (!pbdrv_bluetooth_host_is_connected()) {
+                pbdrv_bluetooth_start_advertising(true);
+            }
+            pbio_os_timer_set(&auto_advertise_timer, PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE_PERIOD_MS);
+        }
         #endif
 
         if (pbsys_status_test(PBIO_PYBRICKS_STATUS_SHUTDOWN_REQUEST)) {
@@ -56,7 +68,12 @@ pbio_error_t pbsys_hmi_await_program_selection(void) {
         // are retried. pbdrv_bluetooth_start_advertising() is a no-op if
         // already advertising or if advertising state is confirmed.
         #if PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE
-        pbdrv_bluetooth_start_advertising(true);
+        if (pbio_os_timer_is_expired(&auto_advertise_timer)) {
+            if (!pbdrv_bluetooth_host_is_connected()) {
+                pbdrv_bluetooth_start_advertising(true);
+            }
+            pbio_os_timer_set(&auto_advertise_timer, PBSYS_CONFIG_HMI_NONE_AUTO_ADVERTISE_PERIOD_MS);
+        }
         #endif
 
         if (pbsys_status_test(PBIO_PYBRICKS_STATUS_SHUTDOWN_REQUEST)) {
