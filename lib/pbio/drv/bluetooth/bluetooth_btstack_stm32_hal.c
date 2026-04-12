@@ -78,6 +78,17 @@ volatile uint32_t pbdrv_btstack_diag_adv_func_timed_out;
 volatile uint32_t pbdrv_btstack_diag_adv_func_success;
 volatile uint32_t pbdrv_btstack_diag_hal_tx_fail;
 volatile uint32_t pbdrv_btstack_diag_hal_tx_abort;
+volatile uint32_t pbdrv_btstack_diag_hal_rx_fail;
+volatile uint32_t pbdrv_btstack_diag_hal_rx_abort;
+volatile uint32_t pbdrv_btstack_diag_uart_irq_count;
+volatile uint32_t pbdrv_btstack_diag_uart_error_count;
+volatile uint32_t pbdrv_btstack_diag_uart_error_ore;
+volatile uint32_t pbdrv_btstack_diag_uart_error_fe;
+volatile uint32_t pbdrv_btstack_diag_uart_error_ne;
+volatile uint32_t pbdrv_btstack_diag_uart_error_pe;
+volatile uint32_t pbdrv_btstack_diag_uart_recover_attempt;
+volatile uint32_t pbdrv_btstack_diag_uart_recover_success;
+volatile uint32_t pbdrv_btstack_diag_uart_recover_fail;
 
 typedef struct {
     uint32_t seq;
@@ -120,6 +131,17 @@ typedef struct {
     uint32_t diag_adv_func_success;
     uint32_t diag_hal_tx_fail;
     uint32_t diag_hal_tx_abort;
+    uint32_t diag_hal_rx_fail;
+    uint32_t diag_hal_rx_abort;
+    uint32_t diag_uart_irq_count;
+    uint32_t diag_uart_error_count;
+    uint32_t diag_uart_error_ore;
+    uint32_t diag_uart_error_fe;
+    uint32_t diag_uart_error_ne;
+    uint32_t diag_uart_error_pe;
+    uint32_t diag_uart_recover_attempt;
+    uint32_t diag_uart_recover_success;
+    uint32_t diag_uart_recover_fail;
 } pbdrv_btstack_stm32_telemetry_snapshot_t;
 
 volatile pbdrv_btstack_stm32_telemetry_snapshot_t pbdrv_btstack_stm32_telemetry_snapshot;
@@ -164,6 +186,17 @@ static void pbdrv_btstack_stm32_telemetry_refresh(void) {
     pbdrv_btstack_stm32_telemetry_snapshot.diag_adv_func_success = pbdrv_btstack_diag_adv_func_success;
     pbdrv_btstack_stm32_telemetry_snapshot.diag_hal_tx_fail = pbdrv_btstack_diag_hal_tx_fail;
     pbdrv_btstack_stm32_telemetry_snapshot.diag_hal_tx_abort = pbdrv_btstack_diag_hal_tx_abort;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_hal_rx_fail = pbdrv_btstack_diag_hal_rx_fail;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_hal_rx_abort = pbdrv_btstack_diag_hal_rx_abort;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_uart_irq_count = pbdrv_btstack_diag_uart_irq_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_uart_error_count = pbdrv_btstack_diag_uart_error_count;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_uart_error_ore = pbdrv_btstack_diag_uart_error_ore;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_uart_error_fe = pbdrv_btstack_diag_uart_error_fe;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_uart_error_ne = pbdrv_btstack_diag_uart_error_ne;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_uart_error_pe = pbdrv_btstack_diag_uart_error_pe;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_uart_recover_attempt = pbdrv_btstack_diag_uart_recover_attempt;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_uart_recover_success = pbdrv_btstack_diag_uart_recover_success;
+    pbdrv_btstack_stm32_telemetry_snapshot.diag_uart_recover_fail = pbdrv_btstack_diag_uart_recover_fail;
     pbdrv_btstack_stm32_telemetry_snapshot.seq++;
 }
 #endif
@@ -191,6 +224,19 @@ pbio_error_t pbdrv_bluetooth_btstack_platform_init(void) {
     pbdrv_btstack_stm32_uart_recv_bytes = 0;
     pbdrv_btstack_stm32_uart_tx_irq_count = 0;
     pbdrv_btstack_stm32_uart_rx_irq_count = 0;
+    pbdrv_btstack_diag_hal_tx_fail = 0;
+    pbdrv_btstack_diag_hal_tx_abort = 0;
+    pbdrv_btstack_diag_hal_rx_fail = 0;
+    pbdrv_btstack_diag_hal_rx_abort = 0;
+    pbdrv_btstack_diag_uart_irq_count = 0;
+    pbdrv_btstack_diag_uart_error_count = 0;
+    pbdrv_btstack_diag_uart_error_ore = 0;
+    pbdrv_btstack_diag_uart_error_fe = 0;
+    pbdrv_btstack_diag_uart_error_ne = 0;
+    pbdrv_btstack_diag_uart_error_pe = 0;
+    pbdrv_btstack_diag_uart_recover_attempt = 0;
+    pbdrv_btstack_diag_uart_recover_success = 0;
+    pbdrv_btstack_diag_uart_recover_fail = 0;
     pbdrv_btstack_stm32_telemetry_refresh();
 #endif
     return PBIO_SUCCESS;
@@ -329,6 +375,9 @@ static btstack_data_source_t transport_data_source;
 
 static volatile bool send_complete;
 static volatile bool receive_complete;
+static volatile bool btstack_rx_rearm_needed;
+static uint8_t *btstack_pending_rx_buffer;
+static uint16_t btstack_pending_rx_len;
 
 // callbacks
 static void (*block_sent)(void);
@@ -352,7 +401,57 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 #else
     (void)huart;
 #endif
+    btstack_pending_rx_len = 0;
     receive_complete = true;
+    btstack_run_loop_poll_data_sources_from_irq();
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+    uint32_t err = huart->ErrorCode;
+    pbdrv_btstack_diag_uart_error_count++;
+    if (err & HAL_UART_ERROR_ORE) {
+        pbdrv_btstack_diag_uart_error_ore++;
+    }
+    if (err & HAL_UART_ERROR_FE) {
+        pbdrv_btstack_diag_uart_error_fe++;
+    }
+    if (err & HAL_UART_ERROR_NE) {
+        pbdrv_btstack_diag_uart_error_ne++;
+    }
+    if (err & HAL_UART_ERROR_PE) {
+        pbdrv_btstack_diag_uart_error_pe++;
+    }
+#else
+    (void)huart;
+#endif
+
+    // Recover RX path after UART error (especially overrun).
+    // HAL may leave receive state stalled after ORE until we explicitly abort
+    // and rearm the pending receive block expected by BTstack H:4.
+    // We do the actual rearm in poll context, not IRQ context.
+    if (huart) {
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+        pbdrv_btstack_diag_uart_recover_attempt++;
+#endif
+
+#ifdef UART_CLEAR_OREF
+        __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_OREF);
+#endif
+#ifdef UART_CLEAR_NEF
+        __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_NEF);
+#endif
+#ifdef UART_CLEAR_FEF
+        __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_FEF);
+#endif
+#ifdef UART_CLEAR_PEF
+        __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_PEF);
+#endif
+
+        HAL_UART_AbortReceive(huart);
+        btstack_rx_rearm_needed = true;
+    }
+
     btstack_run_loop_poll_data_sources_from_irq();
 }
 
@@ -363,6 +462,7 @@ static int btstack_stm32_hal_init(const btstack_uart_config_t *config) {
     uart_config = config;
 
     btstack_use_dma = pdata->tx_dma != NULL && pdata->rx_dma != NULL;
+    btstack_rx_rearm_needed = false;
 
 #if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
     pbdrv_btstack_stm32_telemetry_refresh();
@@ -447,6 +547,23 @@ static int btstack_stm32_hal_init(const btstack_uart_config_t *config) {
 static void btstack_stm32_hal_process(btstack_data_source_t *ds, btstack_data_source_callback_type_t callback_type) {
     switch (callback_type) {
         case DATA_SOURCE_CALLBACK_POLL:
+            if (btstack_rx_rearm_needed && btstack_pending_rx_buffer && btstack_pending_rx_len) {
+                HAL_StatusTypeDef rearm_status = btstack_use_dma ?
+                    HAL_UART_Receive_DMA(&btstack_huart, btstack_pending_rx_buffer, btstack_pending_rx_len) :
+                    HAL_UART_Receive_IT(&btstack_huart, btstack_pending_rx_buffer, btstack_pending_rx_len);
+
+                if (rearm_status == HAL_OK) {
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+                    pbdrv_btstack_diag_uart_recover_success++;
+#endif
+                    btstack_rx_rearm_needed = false;
+                } else {
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+                    pbdrv_btstack_diag_uart_recover_fail++;
+#endif
+                }
+            }
+
             if (send_complete) {
                 send_complete = false;
                 if (block_sent) {
@@ -507,17 +624,31 @@ static void btstack_stm32_hal_receive_block(uint8_t *buffer, uint16_t len) {
     pbdrv_btstack_stm32_uart_recv_bytes += len;
 #endif
     HAL_StatusTypeDef hal_status;
+    btstack_pending_rx_buffer = buffer;
+    btstack_pending_rx_len = len;
 
     if (btstack_use_dma) {
         hal_status = HAL_UART_Receive_DMA(&btstack_huart, buffer, len);
         if (hal_status != HAL_OK) {
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+            pbdrv_btstack_diag_hal_rx_fail++;
+#endif
             HAL_UART_AbortReceive(&btstack_huart);
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+            pbdrv_btstack_diag_hal_rx_abort++;
+#endif
             (void)HAL_UART_Receive_DMA(&btstack_huart, buffer, len);
         }
     } else {
         hal_status = HAL_UART_Receive_IT(&btstack_huart, buffer, len);
         if (hal_status != HAL_OK) {
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+            pbdrv_btstack_diag_hal_rx_fail++;
+#endif
             HAL_UART_AbortReceive(&btstack_huart);
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+            pbdrv_btstack_diag_hal_rx_abort++;
+#endif
             (void)HAL_UART_Receive_IT(&btstack_huart, buffer, len);
         }
     }
@@ -595,6 +726,9 @@ void pbdrv_bluetooth_btstack_stm32_hal_handle_rx_dma_irq(void) {
 }
 
 void pbdrv_bluetooth_btstack_stm32_hal_handle_uart_irq(void) {
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_STM32_TELEMETRY
+    pbdrv_btstack_diag_uart_irq_count++;
+#endif
     HAL_UART_IRQHandler(&btstack_huart);
 }
 
