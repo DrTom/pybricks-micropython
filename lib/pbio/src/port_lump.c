@@ -211,6 +211,9 @@ volatile uint32_t pbio_lump_diag_sync_sync_timeouts;
 volatile uint32_t pbio_lump_diag_sync_sync_header_seen;
 volatile uint32_t pbio_lump_diag_sync_last_sync_byte;
 volatile uint32_t pbio_lump_diag_sync_reoffer_count;
+volatile uint32_t pbio_lump_diag_hs_wait_timeout_count;
+volatile uint32_t pbio_lump_diag_hs_offer_sent_count;
+volatile uint32_t pbio_lump_diag_hs_offer_write_err_count;
 
 enum {
     BUF_TX_MSG,

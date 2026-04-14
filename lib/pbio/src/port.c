@@ -2,6 +2,7 @@
 // Copyright (c) 2018-2025 The Pybricks Authors
 
 #include <pbdrv/counter.h>
+#include <pbdrv/gpio.h>
 #include <pbdrv/i2c.h>
 #include <pbdrv/ioport.h>
 #include <pbdrv/uart.h>
@@ -20,8 +21,28 @@
 #include <pbio/port_dcm.h>
 #include <pbio/port_lump.h>
 
+extern volatile unsigned int pbio_lump_diag_hs_wait_timeout_count;
+extern volatile unsigned int pbio_lump_diag_hs_offer_sent_count;
+extern volatile unsigned int pbio_lump_diag_hs_offer_write_err_count;
+
 #ifndef PBIO_CONFIG_PORT_LUMP_DIRECT_UART
 #define PBIO_CONFIG_PORT_LUMP_DIRECT_UART (0)
+#endif
+
+#ifndef PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_OFFER
+#define PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_OFFER (1)
+#endif
+
+#ifndef PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_POLL_MS
+#define PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_POLL_MS (2)
+#endif
+
+#ifndef PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_OFFER_AT_MS
+#define PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_OFFER_AT_MS (400)
+#endif
+
+#ifndef PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_WAIT_TIMEOUT_MS
+#define PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_WAIT_TIMEOUT_MS (2000)
 #endif
 
 #define DEBUG 0
@@ -132,6 +153,11 @@ static pbio_error_t pbio_port_process_lego_dcm_thread(pbio_os_state_t *state, vo
     // processes. Use the port state variables instead.
 
     pbio_error_t err;
+    uint32_t low_ms;
+    uint32_t waited_ms;
+    uint8_t prev_level;
+    bool in_low_pulse;
+    static const uint8_t hs_offer_msg[] = { 0x52, 0x00, 0xC2, 0x01, 0x00, 0x6E };
 
     PBIO_OS_ASYNC_BEGIN(state);
 
@@ -147,6 +173,67 @@ static pbio_error_t pbio_port_process_lego_dcm_thread(pbio_os_state_t *state, vo
         // UART-buffer multiplexing hardware. Reuse regular LUMP sync/data
         // threads, but skip the passive PUP detection sequence.
         pbio_port_p1p2_set_power(port, PBIO_PORT_POWER_REQUIREMENTS_NONE);
+
+        #if PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_OFFER
+        // Wait for sustained low on sensor TX (hub RX line) and send the
+        // LPF2 high-speed offer at ~400 ms into that low pulse.
+        pbdrv_ioport_p5p6_set_mode(port->pdata->pins, PBDRV_IOPORT_P5P6_MODE_GPIO_ADC);
+        pbdrv_gpio_set_pull(&port->pdata->pins->p6, PBDRV_GPIO_PULL_UP);
+
+        low_ms = 0;
+        waited_ms = 0;
+        prev_level = pbdrv_gpio_input(&port->pdata->pins->p6);
+        in_low_pulse = false;
+        pbio_os_timer_set(&port->timer, PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_POLL_MS);
+
+        for (;;) {
+            PBIO_OS_AWAIT_UNTIL(state, pbio_os_timer_is_expired(&port->timer));
+            pbio_os_timer_extend(&port->timer);
+
+            waited_ms += PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_POLL_MS;
+
+            uint8_t level = pbdrv_gpio_input(&port->pdata->pins->p6);
+
+            // Start timing only on a real falling edge, then require the line
+            // to stay low continuously for the full offer window.
+            if (!in_low_pulse) {
+                if (prev_level == 1 && level == 0) {
+                    in_low_pulse = true;
+                    low_ms = 0;
+                }
+                prev_level = level;
+            } else {
+                if (level == 0) {
+                    low_ms += PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_POLL_MS;
+                } else {
+                    in_low_pulse = false;
+                    low_ms = 0;
+                }
+                prev_level = level;
+            }
+
+            if (low_ms >= PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_OFFER_AT_MS) {
+                pbdrv_ioport_p5p6_set_mode(port->pdata->pins, PBDRV_IOPORT_P5P6_MODE_UART);
+                pbdrv_uart_set_baud_rate(port->uart_dev, 115200);
+                pbdrv_uart_flush(port->uart_dev);
+
+                PBIO_OS_AWAIT(state, &port->child2, err = pbdrv_uart_write(&port->child2, port->uart_dev, hs_offer_msg, sizeof(hs_offer_msg), 250));
+
+                if (err == PBIO_SUCCESS) {
+                    pbio_lump_diag_hs_offer_sent_count++;
+                } else {
+                    pbio_lump_diag_hs_offer_write_err_count++;
+                }
+                break;
+            }
+
+            if (waited_ms >= PBIO_CONFIG_PORT_LUMP_DIRECT_UART_HS_WAIT_TIMEOUT_MS) {
+                pbio_lump_diag_hs_wait_timeout_count++;
+                break;
+            }
+        }
+        #endif
+
         pbdrv_ioport_p5p6_set_mode(port->pdata->pins, PBDRV_IOPORT_P5P6_MODE_UART);
         pbio_port_diag_direct_state = 2;
         pbio_port_diag_direct_sync_attempt_count++;
