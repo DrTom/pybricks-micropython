@@ -193,6 +193,25 @@ struct _pbio_port_lump_dev_t {
 
 pbio_port_lump_dev_t lump_devices[PBIO_CONFIG_PORT_LUMP_NUM_DEV];
 
+// Sync diagnostics for custom LUMP device bring-up (read via debugger).
+volatile uint32_t pbio_lump_diag_sync_calls;
+volatile uint32_t pbio_lump_diag_sync_success;
+volatile uint32_t pbio_lump_diag_sync_bad_type_id;
+volatile uint32_t pbio_lump_diag_sync_bad_type_checksum;
+volatile uint32_t pbio_lump_diag_sync_type_retries;
+volatile uint32_t pbio_lump_diag_sync_uart_read_errors;
+volatile uint32_t pbio_lump_diag_sync_info_parse_errors;
+volatile uint32_t pbio_lump_diag_sync_info_parse_count;
+volatile uint32_t pbio_lump_diag_sync_last_type_id;
+volatile uint32_t pbio_lump_diag_sync_last_type_checksum;
+volatile uint32_t pbio_lump_diag_sync_last_type_expected_checksum;
+volatile uint32_t pbio_lump_diag_sync_last_status;
+volatile uint32_t pbio_lump_diag_sync_ack_probe_timeout;
+volatile uint32_t pbio_lump_diag_sync_sync_timeouts;
+volatile uint32_t pbio_lump_diag_sync_sync_header_seen;
+volatile uint32_t pbio_lump_diag_sync_last_sync_byte;
+volatile uint32_t pbio_lump_diag_sync_reoffer_count;
+
 enum {
     BUF_TX_MSG,
     BUF_RX_MSG,
@@ -660,6 +679,7 @@ static void pbio_port_lump_lump_parse_msg(pbio_port_lump_dev_t *lump_dev) {
     return;
 
 err:
+    pbio_lump_diag_sync_info_parse_errors++;
     lump_dev->status = PBDRV_LEGODEV_LUMP_STATUS_ERR;
 }
 
@@ -741,6 +761,8 @@ pbio_error_t pbio_port_lump_sync_thread(pbio_os_state_t *state, pbio_port_lump_d
 
     PBIO_OS_ASYNC_BEGIN(state);
 
+    pbio_lump_diag_sync_calls++;
+
     // Reset whole state except references to static buffers
     memset((uint8_t *)lump_dev + offsetof(pbio_port_lump_dev_t, type_id), 0, sizeof(pbio_port_lump_dev_t) - offsetof(pbio_port_lump_dev_t, type_id));
 
@@ -767,6 +789,9 @@ pbio_error_t pbio_port_lump_sync_thread(pbio_os_state_t *state, pbio_port_lump_d
     PBIO_OS_AWAIT(state, &lump_dev->read_pt, err = pbdrv_uart_read(&lump_dev->read_pt, uart_dev, lump_dev->rx_msg, 1, 10));
 
     if ((err == PBIO_SUCCESS && lump_dev->rx_msg[0] != LUMP_SYS_ACK) || err == PBIO_ERROR_TIMEDOUT) {
+        if (err == PBIO_ERROR_TIMEDOUT) {
+            pbio_lump_diag_sync_ack_probe_timeout++;
+        }
         // if we did not get ACK within 100ms, then switch to slow baud rate for sync
         pbdrv_uart_set_baud_rate(uart_dev, EV3_UART_SPEED_MIN);
         debug_pr("set baud: %d\n", EV3_UART_SPEED_MIN);
@@ -783,12 +808,16 @@ sync:
         // exact timing to get in sync.
         PBIO_OS_AWAIT(state, &lump_dev->read_pt, err = pbdrv_uart_read(&lump_dev->read_pt, uart_dev, lump_dev->rx_msg, 1, EV3_UART_IO_TIMEOUT));
         if (err == PBIO_ERROR_TIMEDOUT) {
+            pbio_lump_diag_sync_sync_timeouts++;
             continue;
         }
         if (err != PBIO_SUCCESS) {
             debug_pr("UART Rx error during sync\n");
             return err;
         }
+
+        pbio_lump_diag_sync_sync_header_seen++;
+        pbio_lump_diag_sync_last_sync_byte = lump_dev->rx_msg[0];
 
         if (lump_dev->rx_msg[0] == (LUMP_MSG_TYPE_CMD | LUMP_CMD_TYPE)) {
             break;
@@ -798,6 +827,7 @@ sync:
     // Then read the rest of the message.
     PBIO_OS_AWAIT(state, &lump_dev->read_pt, err = pbdrv_uart_read(&lump_dev->read_pt, uart_dev, lump_dev->rx_msg + 1, 2, EV3_UART_IO_TIMEOUT));
     if (err != PBIO_SUCCESS) {
+        pbio_lump_diag_sync_uart_read_errors++;
         debug_pr("UART Rx error while reading type\n");
         return err;
     }
@@ -806,13 +836,24 @@ sync:
     uint8_t checksum = 0xff ^ lump_dev->rx_msg[0] ^ lump_dev->rx_msg[1];
     bool bad_id_checksum = lump_dev->rx_msg[2] != checksum;
 
+    pbio_lump_diag_sync_last_type_id = lump_dev->rx_msg[1];
+    pbio_lump_diag_sync_last_type_checksum = lump_dev->rx_msg[2];
+    pbio_lump_diag_sync_last_type_expected_checksum = checksum;
+
     if (bad_id || bad_id_checksum) {
+        if (bad_id) {
+            pbio_lump_diag_sync_bad_type_id++;
+        }
+        if (bad_id_checksum) {
+            pbio_lump_diag_sync_bad_type_checksum++;
+        }
         debug_pr("Bad device type id or checksum\n");
         if (lump_dev->err_count > 10) {
             lump_dev->err_count = 0;
             return PBIO_ERROR_FAILED;
         }
         lump_dev->err_count++;
+        pbio_lump_diag_sync_type_retries++;
         goto sync;
     }
 
@@ -854,6 +895,7 @@ sync:
         }
 
         // at this point, we have a full lump_dev->msg that can be parsed
+        pbio_lump_diag_sync_info_parse_count++;
         pbio_port_lump_lump_parse_msg(lump_dev);
     }
 
@@ -896,6 +938,8 @@ sync:
     lump_dev->data_set->size = 0;
 
     lump_dev->status = PBDRV_LEGODEV_LUMP_STATUS_DATA;
+    pbio_lump_diag_sync_success++;
+    pbio_lump_diag_sync_last_status = lump_dev->status;
 
     PBIO_OS_ASYNC_END(PBIO_SUCCESS);
 }
