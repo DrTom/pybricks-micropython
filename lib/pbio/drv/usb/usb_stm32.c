@@ -5,7 +5,7 @@
 
 #include <pbdrv/config.h>
 
-#if PBDRV_CONFIG_USB_STM32F4 || PBDRV_CONFIG_USB_STM32H7
+#if PBDRV_CONFIG_USB_STM32F4 || PBDRV_CONFIG_USB_STM32H7 || PBDRV_CONFIG_USB_STM32H5
 
 #include <string.h>
 #include <stdbool.h>
@@ -15,6 +15,8 @@
 #include <stm32f4xx_hal_pcd_ex.h>
 #elif PBDRV_CONFIG_USB_STM32H7
 #include <stm32h7xx_hal_pcd_ex.h>
+#elif PBDRV_CONFIG_USB_STM32H5
+#include <stm32h5xx_hal_pcd_ex.h>
 #endif
 #include <usbd_core.h>
 #include <usbd_desc.h>
@@ -53,6 +55,64 @@ static PCD_HandleTypeDef hpcd;
 static volatile bool vbus_active;
 static pbdrv_usb_bcd_t pbdrv_usb_bcd;
 
+#if PBDRV_CONFIG_USB_STM32H5
+volatile uint32_t pbdrv_usb_diag_magic;
+volatile uint32_t pbdrv_usb_diag_stage;
+volatile uint32_t pbdrv_usb_diag_systeminit_calls;
+volatile uint32_t pbdrv_usb_diag_pbdrv_usb_init_calls;
+volatile uint32_t pbdrv_usb_diag_usbd_ll_init_calls;
+volatile uint32_t pbdrv_usb_diag_hal_pcd_msp_init_calls;
+volatile uint32_t pbdrv_usb_diag_hal_pcd_msp_step;
+volatile uint32_t pbdrv_usb_diag_hal_pcd_init_status;
+volatile uint32_t pbdrv_usb_diag_hal_pcd_start_status;
+volatile uint32_t pbdrv_usb_diag_usbd_start_status;
+volatile uint32_t pbdrv_usb_diag_usbd_ll_start_calls;
+volatile uint32_t pbdrv_usb_diag_otg_irq_count;
+volatile uint32_t pbdrv_usb_diag_poll_irq_count;
+volatile uint32_t pbdrv_usb_diag_is_ready_calls;
+volatile uint32_t pbdrv_usb_diag_wait_cfg_calls;
+volatile uint32_t pbdrv_usb_diag_vbus_irq_count;
+volatile uint32_t pbdrv_usb_diag_reset_cb_count;
+volatile uint32_t pbdrv_usb_diag_setup_cb_count;
+volatile uint32_t pbdrv_usb_diag_data_out_cb_count;
+volatile uint32_t pbdrv_usb_diag_data_in_cb_count;
+volatile uint32_t pbdrv_usb_diag_connect_cb_count;
+volatile uint32_t pbdrv_usb_diag_disconnect_cb_count;
+
+static void pbdrv_usb_stm32_poll_irq(void) {
+    if (hpcd.Instance == NULL) {
+        return;
+    }
+
+    uint32_t active = hpcd.Instance->ISTR & (USB_ISTR_CTR
+        | USB_ISTR_RESET
+        | USB_ISTR_PMAOVR
+        | USB_ISTR_ERR
+        | USB_ISTR_WKUP
+        | USB_ISTR_SUSP
+        | USB_ISTR_SOF
+        | USB_ISTR_ESOF
+        | USB_ISTR_L1REQ);
+
+    if (active) {
+        pbdrv_usb_diag_poll_irq_count++;
+        HAL_PCD_IRQHandler(&hpcd);
+
+        if (hpcd.Instance->ISTR & (USB_ISTR_CTR
+            | USB_ISTR_RESET
+            | USB_ISTR_PMAOVR
+            | USB_ISTR_ERR
+            | USB_ISTR_WKUP
+            | USB_ISTR_SUSP
+            | USB_ISTR_SOF
+            | USB_ISTR_ESOF
+            | USB_ISTR_L1REQ)) {
+            pbio_os_request_poll();
+        }
+    }
+}
+#endif
+
 /**
  * Waits for USB to be plugged in and runs battery charger detection task.
  *
@@ -61,21 +121,25 @@ static pbdrv_usb_bcd_t pbdrv_usb_bcd;
  * @param [in]  pt  The protothread.
  */
 pbio_error_t pbdrv_usb_wait_until_configured(pbio_os_state_t *state) {
-    #if !PBDRV_CONFIG_USB_STM32H7
+    #if !(PBDRV_CONFIG_USB_STM32H7 || PBDRV_CONFIG_USB_STM32H5)
     static pbio_os_timer_t timer;
     USB_OTG_GlobalTypeDef *USBx = hpcd.Instance;
     #endif
 
     PBIO_OS_ASYNC_BEGIN(state);
 
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_wait_cfg_calls++;
+    #endif
+
     pbdrv_usb_bcd = PBDRV_USB_BCD_NONE;
 
     // Wait until USB plugged in.
     PBIO_OS_AWAIT_UNTIL(state, vbus_active);
 
-    #if PBDRV_CONFIG_USB_STM32H7
+#if PBDRV_CONFIG_USB_STM32H7 || PBDRV_CONFIG_USB_STM32H5
     pbdrv_usb_bcd = PBDRV_USB_BCD_STANDARD_DOWNSTREAM;
-    #else
+#else
     // Disable all other USB functions.
     HAL_PCDEx_ActivateBCD(&hpcd);
 
@@ -140,6 +204,11 @@ pbio_error_t pbdrv_usb_wait_until_configured(pbio_os_state_t *state) {
 }
 
 bool pbdrv_usb_is_ready(void) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_is_ready_calls++;
+    pbdrv_usb_stm32_poll_irq();
+    pbio_os_request_poll();
+    #endif
     return vbus_active && pbdrv_usb_bcd != PBDRV_USB_BCD_NONE;
 }
 
@@ -151,6 +220,9 @@ pbdrv_usb_bcd_t pbdrv_usb_get_bcd(void) {
  * Callback for connecting USB OTG FS interrupt in platform.c.
  */
 void pbdrv_usb_stm32_handle_otg_fs_irq(void) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_otg_irq_count++;
+    #endif
     HAL_PCD_IRQHandler(&hpcd);
 }
 
@@ -161,6 +233,9 @@ void pbdrv_usb_stm32_handle_otg_fs_irq(void) {
  *                      otherwise false.
  */
 void pbdrv_usb_stm32_handle_vbus_irq(bool active) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_vbus_irq_count++;
+    #endif
     vbus_active = active;
     pbio_os_request_poll();
 }
@@ -350,6 +425,9 @@ pbio_error_t pbdrv_usb_tx_response(pbio_os_state_t *state, pbio_pybricks_error_t
 }
 
 uint32_t pbdrv_usb_get_data_and_start_receive(uint8_t *data) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_stm32_poll_irq();
+    #endif
 
     if (!usb_in_sz) {
         return 0;
@@ -366,6 +444,15 @@ uint32_t pbdrv_usb_get_data_and_start_receive(uint8_t *data) {
 }
 
 void pbdrv_usb_init_device(void) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_magic = 0x48554235;
+    pbdrv_usb_diag_pbdrv_usb_init_calls++;
+    pbdrv_usb_diag_stage = 0x1000;
+    // Keep these symbols linked so debug snapshot can always read them.
+    pbdrv_usb_diag_connect_cb_count = 0;
+    pbdrv_usb_diag_disconnect_cb_count = 0;
+    #endif
+
     // Link the driver data structures
     husbd.pData = &hpcd;
     hpcd.pData = &husbd;
@@ -373,15 +460,44 @@ void pbdrv_usb_init_device(void) {
     #if PBDRV_CONFIG_USB_CHARGE_ONLY
     USBD_Init(&husbd, NULL, 0);
     #else
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_stage = 0x1100;
+    #endif
     USBD_Pybricks_Desc_Init();
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_stage = 0x1200;
+    #endif
     USBD_Init(&husbd, &USBD_Pybricks_Desc, 0);
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_stage = 0x1300;
+    #endif
     USBD_RegisterClass(&husbd, &USBD_Pybricks_ClassDriver);
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_stage = 0x1400;
+    #endif
     USBD_Pybricks_RegisterInterface(&husbd, &USBD_Pybricks_fops);
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_stage = 0x1500;
+    #endif
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_usbd_start_status = USBD_Start(&husbd);
+    #else
     USBD_Start(&husbd);
+    #endif
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_stage = 0x1600;
+    #endif
 
-    #if PBDRV_CONFIG_USB_STM32H7
+    #if PBDRV_CONFIG_USB_STM32H7 || PBDRV_CONFIG_USB_STM32H5
     // Force connect in case HAL left soft-disconnect asserted.
     USB_DevConnect(hpcd.Instance);
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_stage = 0x1700;
+    // Handle early pending USB events during startup.
+    for (volatile uint32_t i = 0; i < 200000; i++) {
+        pbdrv_usb_stm32_poll_irq();
+    }
+    #endif
     #endif
     #endif
 }
@@ -391,4 +507,4 @@ void pbdrv_usb_deinit_device(void) {
     USBD_DeInit(&husbd);
 }
 
-#endif // PBDRV_CONFIG_USB_STM32F4 || PBDRV_CONFIG_USB_STM32H7
+#endif // PBDRV_CONFIG_USB_STM32F4 || PBDRV_CONFIG_USB_STM32H7 || PBDRV_CONFIG_USB_STM32H5

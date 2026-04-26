@@ -49,6 +49,7 @@
 
 #include <pbdrv/config.h>
 #include <pbio/protocol.h>
+#include STM32_H
 
 #include "usbd_core.h"
 #include "usbd_conf.h"
@@ -61,17 +62,10 @@
 /* Private define ------------------------------------------------------------*/
 #define USBD_LANGID_STRING            0x409
 
-// STM32 MCU Device ID register addresses
-// REVISIT: make pbdrv_xxx_get_serial_number() and use that instead
-#if PBDRV_CONFIG_USB_STM32H7
-#define DEVICE_ID1 (0x1FF1E800)
-#define DEVICE_ID2 (0x1FF1E804)
-#define DEVICE_ID3 (0x1FF1E808)
-#else
-#define DEVICE_ID1 (0x1FFF7A10)
-#define DEVICE_ID2 (0x1FFF7A14)
-#define DEVICE_ID3 (0x1FFF7A18)
-#endif
+// STM32 unique device ID registers.
+#define DEVICE_ID1 (UID_BASE)
+#define DEVICE_ID2 (UID_BASE + 4)
+#define DEVICE_ID3 (UID_BASE + 8)
 
 // bDevCapabilityType for USB_DEVICE_CAPABITY_TYPE
 #define USB_DEV_CAP_TYPE_PLATFORM   (5)

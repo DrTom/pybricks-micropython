@@ -45,6 +45,7 @@
 
 #include <pbdrv/config.h>
 #include STM32_HAL_H
+#include "../usb_stm32.h"
 #include "usbd_core.h"
 
 /*******************************************************************************
@@ -57,6 +58,9 @@
   * @retval None
   */
 void HAL_PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_setup_cb_count++;
+    #endif
     USBD_LL_SetupStage(hpcd->pData, (uint8_t *)hpcd->Setup);
 }
 
@@ -67,6 +71,9 @@ void HAL_PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd) {
   * @retval None
   */
 void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_data_out_cb_count++;
+    #endif
     USBD_LL_DataOutStage(hpcd->pData, epnum, hpcd->OUT_ep[epnum].xfer_buff);
 }
 
@@ -77,6 +84,9 @@ void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum) {
   * @retval None
   */
 void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_data_in_cb_count++;
+    #endif
     USBD_LL_DataInStage(hpcd->pData, epnum, hpcd->IN_ep[epnum].xfer_buff);
 }
 
@@ -95,6 +105,9 @@ void HAL_PCD_SOFCallback(PCD_HandleTypeDef *hpcd) {
   * @retval None
   */
 void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_reset_cb_count++;
+    #endif
     USBD_LL_SetSpeed(hpcd->pData, USBD_SPEED_FULL);
     USBD_LL_Reset(hpcd->pData);
 
@@ -150,6 +163,9 @@ void HAL_PCD_ISOINIncompleteCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum) {
   * @retval None
   */
 void HAL_PCD_ConnectCallback(PCD_HandleTypeDef *hpcd) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_connect_cb_count++;
+    #endif
     USBD_LL_DevConnected(hpcd->pData);
 }
 
@@ -159,6 +175,9 @@ void HAL_PCD_ConnectCallback(PCD_HandleTypeDef *hpcd) {
   * @retval None
   */
 void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_disconnect_cb_count++;
+    #endif
     USBD_LL_DevDisconnected(hpcd->pData);
 }
 
@@ -173,30 +192,62 @@ void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd) {
   */
 USBD_StatusTypeDef  USBD_LL_Init(USBD_HandleTypeDef *pdev) {
     PCD_HandleTypeDef *hpcd = pdev->pData;
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_usbd_ll_init_calls++;
+    pbdrv_usb_diag_stage = 0x2000;
+    #endif
     /*Set LL Driver parameters */
+    #if PBDRV_CONFIG_USB_STM32H5
+    hpcd->Instance = USB_DRD_FS;
+    #else
     hpcd->Instance = USB_OTG_FS;
+    #endif
+    #if PBDRV_CONFIG_USB_STM32H5
+    hpcd->Init.dev_endpoints = 8;
+    #else
     hpcd->Init.dev_endpoints = 9;
     hpcd->Init.use_dedicated_ep1 = 0;
+    #endif
     hpcd->Init.ep0_mps = 0x40;
     hpcd->Init.dma_enable = 0;
     hpcd->Init.low_power_enable = 0;
     hpcd->Init.lpm_enable = 0;
     hpcd->Init.battery_charging_enable = 0;
-    hpcd->Init.use_external_vbus = 0;
     hpcd->Init.phy_itface = PCD_PHY_EMBEDDED;
     hpcd->Init.Sof_enable = 0;
     hpcd->Init.speed = PCD_SPEED_FULL;
     hpcd->Init.vbus_sensing_enable = 0;
+    #if PBDRV_CONFIG_USB_STM32H5
+    hpcd->Init.bulk_doublebuffer_enable = 0;
+    hpcd->Init.iso_singlebuffer_enable = 0;
+    #else
+    hpcd->Init.use_external_vbus = 0;
+    #endif
 
     /*Initialize LL Driver */
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_stage = 0x2100;
+    pbdrv_usb_diag_hal_pcd_init_status = HAL_PCD_Init(hpcd);
+    #else
     HAL_PCD_Init(hpcd);
+    #endif
 
-    // H7 USB2 OTG (HS core on FS pins) has ≥4 KB dedicated FIFO RAM.
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_stage = 0x2200;
+    // Configure PMA for EP0 control and EP1 IN/OUT bulk endpoints.
+    HAL_PCDEx_PMAConfig(hpcd, 0x00, PCD_SNG_BUF, 0x18);
+    HAL_PCDEx_PMAConfig(hpcd, 0x80, PCD_SNG_BUF, 0x58);
+    HAL_PCDEx_PMAConfig(hpcd, 0x01, PCD_SNG_BUF, 0x98);
+    HAL_PCDEx_PMAConfig(hpcd, 0x81, PCD_SNG_BUF, 0xD8);
+    pbdrv_usb_diag_stage = 0x2300;
+    #else
+    // H7 USB2 OTG (HS core on FS pins) has >=4 KB dedicated FIFO RAM.
     // Match the ROM DFU bootloader's RX FIFO allocation (0x200 words).
     // TX FIFOs follow immediately after RX.
     HAL_PCDEx_SetRxFiFo(hpcd, 0x200);
     HAL_PCDEx_SetTxFiFo(hpcd, 0, 0x40);  // EP0 IN: 64 words (256 B)
     HAL_PCDEx_SetTxFiFo(hpcd, 1, 0x80);  // EP1 IN: 128 words (512 B)
+    #endif
 
     #if PBDRV_CONFIG_USB_STM32H7
     // Ensure RXFLVL interrupt is enabled - HAL may leave it masked.
@@ -222,7 +273,18 @@ USBD_StatusTypeDef USBD_LL_DeInit(USBD_HandleTypeDef *pdev) {
   * @retval USBD Status
   */
 USBD_StatusTypeDef USBD_LL_Start(USBD_HandleTypeDef *pdev) {
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_usbd_ll_start_calls++;
+    pbdrv_usb_diag_stage = 0x2400;
+    pbdrv_usb_diag_hal_pcd_start_status = HAL_PCD_Start(pdev->pData);
+    // Make sure the USB function is enabled (DADDR.EF = 1) before traffic.
+    // On STM32H5, HAL sets this in reset handling, but forcing it here avoids
+    // a dead start if reset is never observed.
+    HAL_PCD_SetAddress(pdev->pData, 0);
+    pbdrv_usb_diag_stage = 0x2500;
+    #else
     HAL_PCD_Start(pdev->pData);
+    #endif
     return USBD_OK;
 }
 

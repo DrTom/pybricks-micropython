@@ -313,6 +313,8 @@ ifeq ($(PB_MCU_FAMILY),native)
 SRC_S +=
 else ifeq ($(PB_MCU_SERIES),$(filter $(PB_MCU_SERIES),AT91SAM7 F0 TIAM1808))
 SRC_S += shared/runtime/gchelper_thumb1.s
+else ifeq ($(PB_MCU_SERIES),H5)
+SRC_S += shared/runtime/gchelper_thumb2_m33.s
 else
 SRC_S += shared/runtime/gchelper_thumb2.s
 endif

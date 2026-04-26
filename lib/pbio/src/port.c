@@ -2,6 +2,7 @@
 // Copyright (c) 2018-2025 The Pybricks Authors
 
 #include <pbdrv/counter.h>
+#include <pbdrv/clock.h>
 #include <pbdrv/gpio.h>
 #include <pbdrv/i2c.h>
 #include <pbdrv/ioport.h>
@@ -125,6 +126,14 @@ volatile uint32_t pbio_port_diag_direct_sync_err_count;
 volatile uint32_t pbio_port_diag_direct_sync_ok_count;
 volatile uint32_t pbio_port_diag_direct_data_session_count;
 volatile uint32_t pbio_port_diag_direct_last_err;
+volatile uint32_t pbio_port_diag_direct_loop_entry_ms;
+volatile uint32_t pbio_port_diag_direct_hs_arm_ms;
+volatile uint32_t pbio_port_diag_direct_low_pulse_start_ms;
+volatile uint32_t pbio_port_diag_direct_hs_offer_ms;
+volatile uint32_t pbio_port_diag_direct_sync_start_ms;
+volatile uint32_t pbio_port_diag_direct_sync_end_ms;
+volatile uint32_t pbio_port_diag_direct_data_start_ms;
+volatile uint32_t pbio_port_diag_direct_data_end_ms;
 #endif
 
 #if !PBIO_CONFIG_PORT_LUMP_DIRECT_UART
@@ -168,6 +177,7 @@ static pbio_error_t pbio_port_process_lego_dcm_thread(pbio_os_state_t *state, vo
     for (;;) {
         #if PBIO_CONFIG_PORT_LUMP_DIRECT_UART
         pbio_port_diag_direct_loop_count++;
+        pbio_port_diag_direct_loop_entry_ms = pbdrv_clock_get_ms();
         pbio_port_diag_direct_state = 1;
         // Direct-wired mode for platforms without LEGO-style resistor-ID and
         // UART-buffer multiplexing hardware. Reuse regular LUMP sync/data
@@ -179,6 +189,7 @@ static pbio_error_t pbio_port_process_lego_dcm_thread(pbio_os_state_t *state, vo
         // LPF2 high-speed offer at ~400 ms into that low pulse.
         pbdrv_ioport_p5p6_set_mode(port->pdata->pins, PBDRV_IOPORT_P5P6_MODE_GPIO_ADC);
         pbdrv_gpio_set_pull(&port->pdata->pins->p6, PBDRV_GPIO_PULL_UP);
+        pbio_port_diag_direct_hs_arm_ms = pbdrv_clock_get_ms();
 
         low_ms = 0;
         waited_ms = 0;
@@ -200,6 +211,7 @@ static pbio_error_t pbio_port_process_lego_dcm_thread(pbio_os_state_t *state, vo
                 if (prev_level == 1 && level == 0) {
                     in_low_pulse = true;
                     low_ms = 0;
+                    pbio_port_diag_direct_low_pulse_start_ms = pbdrv_clock_get_ms();
                 }
                 prev_level = level;
             } else {
@@ -218,6 +230,7 @@ static pbio_error_t pbio_port_process_lego_dcm_thread(pbio_os_state_t *state, vo
                 pbdrv_uart_flush(port->uart_dev);
 
                 PBIO_OS_AWAIT(state, &port->child2, err = pbdrv_uart_write(&port->child2, port->uart_dev, hs_offer_msg, sizeof(hs_offer_msg), 250));
+                pbio_port_diag_direct_hs_offer_ms = pbdrv_clock_get_ms();
 
                 if (err == PBIO_SUCCESS) {
                     pbio_lump_diag_hs_offer_sent_count++;
@@ -237,7 +250,9 @@ static pbio_error_t pbio_port_process_lego_dcm_thread(pbio_os_state_t *state, vo
         pbdrv_ioport_p5p6_set_mode(port->pdata->pins, PBDRV_IOPORT_P5P6_MODE_UART);
         pbio_port_diag_direct_state = 2;
         pbio_port_diag_direct_sync_attempt_count++;
+        pbio_port_diag_direct_sync_start_ms = pbdrv_clock_get_ms();
         PBIO_OS_AWAIT(state, &port->child1, err = pbio_port_lump_sync_thread(&port->child1, port->lump_dev, port->uart_dev, &port->timer));
+        pbio_port_diag_direct_sync_end_ms = pbdrv_clock_get_ms();
         pbio_port_diag_direct_last_err = err;
 
         if (err != PBIO_SUCCESS) {
@@ -250,11 +265,13 @@ static pbio_error_t pbio_port_process_lego_dcm_thread(pbio_os_state_t *state, vo
         pbio_port_diag_direct_sync_ok_count++;
         pbio_port_p1p2_set_power(port, pbio_port_lump_get_power_requirements(port->lump_dev));
         pbio_port_diag_direct_data_session_count++;
+        pbio_port_diag_direct_data_start_ms = pbdrv_clock_get_ms();
         pbio_port_diag_direct_state = 5;
         PBIO_OS_AWAIT_RACE(state, &port->child1, &port->child2,
             pbio_port_lump_data_recv_thread(&port->child1, port->lump_dev, port->uart_dev),
             pbio_port_lump_data_send_thread(&port->child2, port->lump_dev, port->uart_dev, &port->timer)
             );
+        pbio_port_diag_direct_data_end_ms = pbdrv_clock_get_ms();
         pbio_port_diag_direct_state = 6;
         #else
         // Run passive device connection manager until smart device is detected.
