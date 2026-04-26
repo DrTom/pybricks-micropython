@@ -194,6 +194,7 @@ CROSS_COMPILE ?= arm-none-eabi-
 ifeq ($(PB_MCU_FAMILY),STM32)
 CFLAGS_MCU_F0 = -mthumb -mtune=cortex-m0 -mcpu=cortex-m0 -msoft-float
 CFLAGS_MCU_F4 = -mthumb -mtune=cortex-m4 -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+CFLAGS_MCU_H5 = -mthumb -mtune=cortex-m33 -mcpu=cortex-m33 -mfpu=fpv5-sp-d16 -mfloat-abi=hard
 CFLAGS_MCU_H7 = -mthumb -mtune=cortex-m7 -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard
 CFLAGS_MCU_L4 = -mthumb -mtune=cortex-m4 -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 CFLAGS_MCU = $(CFLAGS_MCU_$(PB_MCU_SERIES))
@@ -492,7 +493,7 @@ endif
 ifneq ($(PB_MCU_SERIES),F4)
 STM32_HAL_SRC_C := $(filter-out %xx_hal_fmpi2c.c, $(STM32_HAL_SRC_C))
 endif
-ifneq ($(PB_MCU_SERIES),L4)
+ifneq ($(PB_MCU_SERIES),$(filter $(PB_MCU_SERIES),L4 H5))
 STM32_HAL_SRC_C := $(filter-out %xx_ll_lpuart.c, $(STM32_HAL_SRC_C))
 endif
 ifneq ($(PB_LIB_STM32_USB_DEVICE),1)
