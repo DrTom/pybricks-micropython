@@ -39,6 +39,36 @@ extern volatile uint32_t pbdrv_usb_diag_data_out_cb_count;
 extern volatile uint32_t pbdrv_usb_diag_data_in_cb_count;
 extern volatile uint32_t pbdrv_usb_diag_connect_cb_count;
 extern volatile uint32_t pbdrv_usb_diag_disconnect_cb_count;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_class_init_calls;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_class_deinit_calls;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_setup_calls;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_setup_class_calls;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_setup_vendor_calls;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_setup_standard_calls;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_setup_fail_calls;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_setup_last_bm_request;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_setup_last_b_request;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_setup_last_w_value;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_setup_last_w_index;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_setup_last_w_length;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_data_out_calls;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_data_in_calls;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_data_out_last_len;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_data_out_last_ep;
+extern volatile uint32_t pbdrv_usb_diag_pybricks_data_in_last_ep;
+extern volatile uint32_t pbdrv_usb_diag_rx_itf_calls;
+extern volatile uint32_t pbdrv_usb_diag_rx_itf_last_len;
+extern volatile uint32_t pbdrv_usb_diag_rx_itf_last_word;
+extern volatile uint32_t pbdrv_usb_diag_get_data_calls;
+extern volatile uint32_t pbdrv_usb_diag_get_data_nonzero;
+extern volatile uint32_t pbdrv_usb_diag_get_data_last_size;
+extern volatile uint32_t pbdrv_usb_diag_get_data_last_word;
+extern volatile uint32_t pbdrv_usb_diag_tx_event_calls;
+extern volatile uint32_t pbdrv_usb_diag_tx_event_timeouts;
+extern volatile uint32_t pbdrv_usb_diag_tx_response_calls;
+extern volatile uint32_t pbdrv_usb_diag_tx_response_timeouts;
+extern volatile uint32_t pbdrv_usb_diag_tx_last_size;
+extern volatile uint32_t pbdrv_usb_diag_tx_last_word;
 #endif
 
 #endif // PBDRV_CONFIG_USB_STM32F4 || PBDRV_CONFIG_USB_STM32H7 || PBDRV_CONFIG_USB_STM32H5

@@ -44,6 +44,7 @@
 
 #include "../usb_ch9.h"
 #include "../usb_common_desc.h"
+#include "../usb_stm32.h"
 
 
 /** @addtogroup STM32_USB_DEVICE_LIBRARY
@@ -183,6 +184,10 @@ static USBD_StatusTypeDef USBD_Pybricks_Init(USBD_HandleTypeDef *pdev, uint8_t c
     UNUSED(cfgidx);
     static USBD_Pybricks_HandleTypeDef hPybricks;
 
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_pybricks_class_init_calls++;
+    #endif
+
     pdev->pClassData = &hPybricks;
 
     (void)USBD_LL_OpenEP(pdev, USBD_PYBRICKS_IN_EP, USBD_EP_TYPE_BULK, USBD_PYBRICKS_MAX_PACKET_SIZE);
@@ -208,6 +213,10 @@ static USBD_StatusTypeDef USBD_Pybricks_Init(USBD_HandleTypeDef *pdev, uint8_t c
   */
 static USBD_StatusTypeDef USBD_Pybricks_DeInit(USBD_HandleTypeDef *pdev, uint8_t cfgidx) {
     UNUSED(cfgidx);
+
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_pybricks_class_deinit_calls++;
+    #endif
 
     /* Close EP IN */
     (void)USBD_LL_CloseEP(pdev, USBD_PYBRICKS_IN_EP);
@@ -239,13 +248,28 @@ static USBD_StatusTypeDef USBD_Pybricks_Setup(USBD_HandleTypeDef *pdev,
     uint16_t status_info = 0U;
     USBD_StatusTypeDef ret = USBD_OK;
 
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_pybricks_setup_calls++;
+    pbdrv_usb_diag_pybricks_setup_last_bm_request = req->bmRequest;
+    pbdrv_usb_diag_pybricks_setup_last_b_request = req->bRequest;
+    pbdrv_usb_diag_pybricks_setup_last_w_value = req->wValue;
+    pbdrv_usb_diag_pybricks_setup_last_w_index = req->wIndex;
+    pbdrv_usb_diag_pybricks_setup_last_w_length = req->wLength;
+    #endif
+
     switch (req->bmRequest & USB_REQ_TYPE_MASK)
     {
         case USB_REQ_TYPE_CLASS:
+            #if PBDRV_CONFIG_USB_STM32H5
+            pbdrv_usb_diag_pybricks_setup_class_calls++;
+            #endif
             ret = ((USBD_Pybricks_ItfTypeDef *)pdev->pUserData[pdev->classId])->ReadCharacteristic(pdev, req);
             break;
 
         case USB_REQ_TYPE_VENDOR:
+            #if PBDRV_CONFIG_USB_STM32H5
+            pbdrv_usb_diag_pybricks_setup_vendor_calls++;
+            #endif
             switch (req->bRequest)
             {
                 case PBDRV_USB_VENDOR_REQ_MS_20:
@@ -270,6 +294,9 @@ static USBD_StatusTypeDef USBD_Pybricks_Setup(USBD_HandleTypeDef *pdev,
             break;
 
         case USB_REQ_TYPE_STANDARD:
+            #if PBDRV_CONFIG_USB_STM32H5
+            pbdrv_usb_diag_pybricks_setup_standard_calls++;
+            #endif
             switch (req->bRequest)
             {
                 case USB_REQ_GET_STATUS:
@@ -313,6 +340,12 @@ static USBD_StatusTypeDef USBD_Pybricks_Setup(USBD_HandleTypeDef *pdev,
             break;
     }
 
+    #if PBDRV_CONFIG_USB_STM32H5
+    if (ret != USBD_OK) {
+        pbdrv_usb_diag_pybricks_setup_fail_calls++;
+    }
+    #endif
+
     return ret;
 }
 
@@ -337,6 +370,11 @@ static uint8_t *USBD_Pybricks_GetCfgDesc(uint16_t *length) {
 static USBD_StatusTypeDef USBD_Pybricks_DataIn(USBD_HandleTypeDef *pdev, uint8_t epnum) {
     USBD_Pybricks_HandleTypeDef *hPybricks = pdev->pClassData;
     PCD_HandleTypeDef *hpcd = pdev->pData;
+
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_pybricks_data_in_calls++;
+    pbdrv_usb_diag_pybricks_data_in_last_ep = epnum;
+    #endif
 
     if (hPybricks == NULL) {
         return USBD_FAIL;
@@ -372,6 +410,12 @@ static USBD_StatusTypeDef USBD_Pybricks_DataOut(USBD_HandleTypeDef *pdev, uint8_
 
     /* Get the received data length */
     hPybricks->RxLength = USBD_LL_GetRxDataSize(pdev, epnum);
+
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_pybricks_data_out_calls++;
+    pbdrv_usb_diag_pybricks_data_out_last_len = hPybricks->RxLength;
+    pbdrv_usb_diag_pybricks_data_out_last_ep = epnum;
+    #endif
 
     /* USB data will be immediately processed, this allow next USB traffic being
     NAKed till the end of the application Xfer */

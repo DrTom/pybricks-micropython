@@ -29,6 +29,13 @@ static struct {
     pbio_pybricks_user_program_id_t slot;
 } pbsys_status;
 
+// Diagnostics for host status events (used by BaseHub USB bring-up).
+volatile uint32_t pbsys_diag_status_emit_count;
+volatile uint32_t pbsys_diag_status_flags_last;
+volatile uint32_t pbsys_diag_status_flags_or;
+volatile uint32_t pbsys_diag_status_program_id_last;
+volatile uint32_t pbsys_diag_status_slot_last;
+
 /**
  * Let other processes and external hosts know that the status changed.
  */
@@ -36,6 +43,13 @@ static void pbsys_status_update_emit(void) {
 
     uint8_t buf[PBIO_PYBRICKS_EVENT_STATUS_REPORT_SIZE];
     pbio_pybricks_event_status_report(buf, pbsys_status.flags, pbsys_status.program_id, pbsys_status.slot);
+
+    pbsys_diag_status_emit_count++;
+    pbsys_diag_status_flags_last = pbsys_status.flags;
+    pbsys_diag_status_flags_or |= pbsys_status.flags;
+    pbsys_diag_status_program_id_last = pbsys_status.program_id;
+    pbsys_diag_status_slot_last = pbsys_status.slot;
+
     pbsys_host_schedule_status_update(buf);
 
     // Other processes may be awaiting status changes, so poll.

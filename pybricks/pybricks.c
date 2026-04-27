@@ -127,16 +127,29 @@ MP_REGISTER_MODULE(MP_QSTR_pybricks, pb_package_pybricks);
 MP_REGISTER_MODULE_DELEGATION(pb_package_pybricks, pb_package_pybricks_attr);
 
 #if PYBRICKS_OPT_COMPILER
+// Diagnostics for Pybricks package initialization path.
+volatile uint32_t pb_diag_pybricks_init_calls;
+volatile uint32_t pb_diag_pybricks_init_import_all_calls;
+volatile uint32_t pb_diag_pybricks_init_last_import_all;
+volatile uint32_t pb_diag_pybricks_init_phase;
+volatile uint32_t pb_diag_pybricks_init_nlr_catches;
+volatile uint32_t pb_diag_pybricks_import_all_module_loops;
+volatile uint32_t pb_diag_pybricks_import_all_last_module_qstr;
+
 /**
  * Import all MicroPython modules and import * from Pybricks modules.
  */
 static void pb_package_import_all(void) {
 
+    pb_diag_pybricks_init_phase = 0x3100;
+
     // Go through all modules in mp_builtin_module_map.
     for (size_t i = 0; i < mp_builtin_module_map.used; i++) {
+        pb_diag_pybricks_import_all_module_loops++;
         // This is a constant map of modules, so we can skip checks for
         // filled slots or confirming that we have module types.
         qstr module_name = MP_OBJ_QSTR_VALUE(mp_builtin_module_map.table[i].key);
+        pb_diag_pybricks_import_all_last_module_qstr = module_name;
         mp_obj_t module = mp_builtin_module_map.table[i].value;
         if (!strncmp("pybricks", qstr_str(module_name), 8)) {
             // Import everything from a Pybricks module.
@@ -152,6 +165,8 @@ static void pb_package_import_all(void) {
     const mp_obj_t args;
     mp_store_name(MP_QSTR_hub, MP_OBJ_TYPE_GET_SLOT(&pb_type_ThisHub, make_new)(&pb_type_ThisHub, 0, 0, &args));
     #endif
+
+    pb_diag_pybricks_init_phase = 0x3200;
 }
 
 /**
@@ -162,21 +177,38 @@ static void pb_package_import_all(void) {
 
 void pb_package_pybricks_init(bool import_all) {
 
+    pb_diag_pybricks_init_calls++;
+    pb_diag_pybricks_init_last_import_all = import_all;
+    pb_diag_pybricks_init_phase = 0x1000;
+
     nlr_buf_t nlr;
-    if (nlr_push(&nlr) == 0) {
+    pb_diag_pybricks_init_phase = 0x1010;
+    int nlr_result = nlr_push(&nlr);
+    pb_diag_pybricks_init_phase = 0x1020;
+    if (nlr_result == 0) {
+        pb_diag_pybricks_init_phase = 0x1100;
         // Initialize the package.
         #if PYBRICKS_PY_PARAMETERS
         pb_type_Color_reset();
         #endif
+        pb_diag_pybricks_init_phase = 0x1200;
         #if PYBRICKS_PY_TOOLS
         pb_module_tools_init();
         #endif
+        pb_diag_pybricks_init_phase = 0x1300;
         // Import all if requested.
         if (import_all) {
+            pb_diag_pybricks_init_import_all_calls++;
+            pb_diag_pybricks_init_phase = 0x1400;
             pb_package_import_all();
+            pb_diag_pybricks_init_phase = 0x1500;
         }
+        pb_diag_pybricks_init_phase = 0x1600;
         nlr_pop();
+        pb_diag_pybricks_init_phase = 0x1700;
     } else {
+        pb_diag_pybricks_init_nlr_catches++;
+        pb_diag_pybricks_init_phase = 0x2000;
         // Print initialization or import exception.
         mp_obj_print_exception(&mp_plat_print, MP_OBJ_FROM_PTR(nlr.ret_val));
     }

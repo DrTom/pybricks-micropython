@@ -20,11 +20,31 @@
 static pbsys_host_stdin_event_callback_t pbsys_host_stdin_event_callback;
 static lwrb_t pbsys_host_stdin_ring_buf;
 
+// Diagnostics for host stdin/stdout activity.
+volatile uint32_t pbsys_diag_host_stdin_write_calls;
+volatile uint32_t pbsys_diag_host_stdin_write_bytes;
+volatile uint32_t pbsys_diag_host_stdin_last_byte;
+volatile uint32_t pbsys_diag_host_stdout_write_calls;
+volatile uint32_t pbsys_diag_host_stdout_write_bytes;
+volatile uint32_t pbsys_diag_host_stdout_last_size;
+volatile uint32_t pbsys_diag_host_stdout_last_result;
+volatile uint32_t pbsys_diag_host_init_calls;
+volatile uint32_t pbsys_diag_host_init_set_bt_calls;
+volatile uint32_t pbsys_diag_host_init_set_usb_calls;
+volatile uint32_t pbsys_diag_host_init_set_bt_handler_ptr;
+volatile uint32_t pbsys_diag_host_init_set_usb_handler_ptr;
+
 void pbsys_host_init(void) {
     static uint8_t stdin_buf[PBSYS_CONFIG_HOST_STDIN_BUF_SIZE];
     lwrb_init(&pbsys_host_stdin_ring_buf, stdin_buf, PBIO_ARRAY_SIZE(stdin_buf));
 
+    pbsys_diag_host_init_calls++;
+    pbsys_diag_host_init_set_bt_calls++;
+    pbsys_diag_host_init_set_bt_handler_ptr = (uint32_t)(uintptr_t)pbsys_command;
     pbdrv_bluetooth_set_receive_handler(pbsys_command);
+
+    pbsys_diag_host_init_set_usb_calls++;
+    pbsys_diag_host_init_set_usb_handler_ptr = (uint32_t)(uintptr_t)pbsys_command;
     pbdrv_usb_set_receive_handler(pbsys_command);
 }
 
@@ -72,6 +92,12 @@ uint32_t pbsys_host_stdin_get_free(void) {
  * @param [in]  size    The size of @p data in bytes.
  */
 void pbsys_host_stdin_write(const uint8_t *data, uint32_t size) {
+    pbsys_diag_host_stdin_write_calls++;
+    pbsys_diag_host_stdin_write_bytes += size;
+    if (size) {
+        pbsys_diag_host_stdin_last_byte = data[size - 1];
+    }
+
     if (pbsys_host_stdin_event_callback) {
         // If there is a callback hook, we have to process things one byte at
         // a time. This is needed, e.g. by Micropython to handle Ctrl-C.
@@ -146,10 +172,16 @@ pbio_error_t pbsys_host_stdin_read(uint8_t *data, uint32_t *size) {
  *                          ::PBIO_SUCCESS if at least some data was queued.
  */
 pbio_error_t pbsys_host_stdout_write(const uint8_t *data, uint32_t *size) {
+    pbsys_diag_host_stdout_write_calls++;
+    pbsys_diag_host_stdout_last_size = *size;
+    pbsys_diag_host_stdout_write_bytes += *size;
+
     #if BLE_ONLY
-    return pbdrv_bluetooth_tx(data, size);
+    pbsys_diag_host_stdout_last_result = pbdrv_bluetooth_tx(data, size);
+    return pbsys_diag_host_stdout_last_result;
     #elif USB_ONLY
-    return pbdrv_usb_stdout_tx(data, size);
+    pbsys_diag_host_stdout_last_result = pbdrv_usb_stdout_tx(data, size);
+    return pbsys_diag_host_stdout_last_result;
     #elif BLE_AND_USB
 
     uint32_t bt_avail = pbdrv_bluetooth_tx_available();
@@ -158,11 +190,13 @@ pbio_error_t pbsys_host_stdout_write(const uint8_t *data, uint32_t *size) {
 
     // If all tx_available() calls returned UINT32_MAX, then there is one listening.
     if (available == UINT32_MAX) {
-        return PBIO_ERROR_INVALID_OP;
+        pbsys_diag_host_stdout_last_result = PBIO_ERROR_INVALID_OP;
+        return pbsys_diag_host_stdout_last_result;
     }
     // If one or more tx_available() calls returned 0, then we need to wait.
     if (available == 0) {
-        return PBIO_ERROR_AGAIN;
+        pbsys_diag_host_stdout_last_result = PBIO_ERROR_AGAIN;
+        return pbsys_diag_host_stdout_last_result;
     }
 
     // Limit size to smallest available space from all transports so that we
@@ -178,11 +212,13 @@ pbio_error_t pbsys_host_stdout_write(const uint8_t *data, uint32_t *size) {
     (void)pbdrv_bluetooth_tx(data, size);
     (void)pbdrv_usb_stdout_tx(data, size);
 
-    return PBIO_SUCCESS;
+    pbsys_diag_host_stdout_last_result = PBIO_SUCCESS;
+    return pbsys_diag_host_stdout_last_result;
 
     #else
     // stdout goes to /dev/null
-    return PBIO_SUCCESS;
+    pbsys_diag_host_stdout_last_result = PBIO_SUCCESS;
+    return pbsys_diag_host_stdout_last_result;
     #endif
 }
 

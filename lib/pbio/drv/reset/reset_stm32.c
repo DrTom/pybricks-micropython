@@ -26,8 +26,15 @@ uint32_t pbdrv_reset_stm32_bootloader_selector __attribute__((section(".magic"),
 
 static pbdrv_reset_reason_t reset_reason;
 
+// Diagnostics for last reset reason decoding.
+volatile uint32_t pbdrv_reset_diag_init_calls __attribute__((used));
+volatile uint32_t pbdrv_reset_diag_csr_status __attribute__((used));
+volatile uint32_t pbdrv_reset_diag_reason __attribute__((used));
+
 void pbdrv_reset_init(void) {
+    pbdrv_reset_diag_init_calls++;
     uint32_t status = RCC->CSR;
+    pbdrv_reset_diag_csr_status = status;
 
     if (status & RCC_CSR_SFTRSTF) {
         reset_reason = PBDRV_RESET_REASON_SOFTWARE;
@@ -36,6 +43,7 @@ void pbdrv_reset_init(void) {
     } else {
         reset_reason = PBDRV_RESET_REASON_NONE;
     }
+    pbdrv_reset_diag_reason = reset_reason;
 
     // clear flags for next reset
     RCC->CSR |= RCC_CSR_RMVF;

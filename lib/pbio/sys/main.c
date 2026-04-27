@@ -29,6 +29,19 @@
 // Singleton with information about the currently (or soon) active program.
 static pbsys_main_program_t program;
 
+// Diagnostics for program start/run progression.
+volatile uint32_t pbsys_diag_main_phase;
+volatile uint32_t pbsys_diag_main_start_requests;
+volatile uint32_t pbsys_diag_main_run_calls;
+
+// Persistent boot diagnostics across software resets.
+volatile uint32_t pbsys_diag_boot_magic __attribute__((section(".noinit"), used));
+volatile uint32_t pbsys_diag_boot_count __attribute__((section(".noinit"), used));
+volatile uint32_t pbsys_diag_reset_reason;
+volatile uint32_t pbsys_diag_reset_reason_none_count __attribute__((section(".noinit"), used));
+volatile uint32_t pbsys_diag_reset_reason_software_count __attribute__((section(".noinit"), used));
+volatile uint32_t pbsys_diag_reset_reason_watchdog_count __attribute__((section(".noinit"), used));
+
 bool pbsys_main_program_start_is_requested() {
     return program.start_request_type != PBSYS_MAIN_PROGRAM_START_REQUEST_TYPE_NONE;
 }
@@ -55,6 +68,8 @@ void pbsys_main_program_get_info(pbio_pybricks_user_program_id_t *id, pbsys_main
  */
 pbio_error_t pbsys_main_program_request_start(pbio_pybricks_user_program_id_t id, pbsys_main_program_start_request_type_t start_request_type) {
 
+    pbsys_diag_main_start_requests++;
+
     // Can't start new program if already running or new requested.
     if (pbsys_status_test(PBIO_PYBRICKS_STATUS_USER_PROGRAM_RUNNING) || pbsys_main_program_start_is_requested()) {
         return PBIO_ERROR_BUSY;
@@ -80,12 +95,35 @@ pbio_error_t pbsys_main_program_request_start(pbio_pybricks_user_program_id_t id
  */
 void pbsys_main(void) {
 
+    if (pbsys_diag_boot_magic != 0x50594252) {
+        pbsys_diag_boot_magic = 0x50594252;
+        pbsys_diag_boot_count = 0;
+        pbsys_diag_reset_reason_none_count = 0;
+        pbsys_diag_reset_reason_software_count = 0;
+        pbsys_diag_reset_reason_watchdog_count = 0;
+    }
+    pbsys_diag_boot_count++;
+
+    pbsys_diag_reset_reason = pbdrv_reset_get_reason();
+    switch (pbsys_diag_reset_reason) {
+        case PBDRV_RESET_REASON_SOFTWARE:
+            pbsys_diag_reset_reason_software_count++;
+            break;
+        case PBDRV_RESET_REASON_WATCHDOG:
+            pbsys_diag_reset_reason_watchdog_count++;
+            break;
+        default:
+            pbsys_diag_reset_reason_none_count++;
+            break;
+    }
+
     pbdrv_init();
     pbio_init();
     pbsys_init();
 
     // Keep loading and running user programs until shutdown is requested.
     for (;;) {
+        pbsys_diag_main_phase = 0x1000;
 
         // Drives all processes while waiting for user input. This completes
         // when a user program request is made using the buttons or by a
@@ -93,10 +131,12 @@ void pbsys_main(void) {
         pbio_error_t err = pbsys_hmi_await_program_selection();
         if (err != PBIO_SUCCESS) {
             // Shutdown requested or idle for a long time.
+            pbsys_diag_main_phase = 0x1F00;
             break;
         }
 
         // Prepare pbsys for running the program.
+        pbsys_diag_main_phase = 0x2000;
         pbsys_status_set_program_id(program.id);
         pbsys_status_set(PBIO_PYBRICKS_STATUS_USER_PROGRAM_RUNNING);
         pbsys_host_stdin_set_callback(pbsys_main_stdin_event);
@@ -107,14 +147,20 @@ void pbsys_main(void) {
         }
 
         // Make sure we are starting with an empty stdin buffer.
+        pbsys_diag_main_phase = 0x2100;
         pbsys_host_stdin_flush();
 
         // Run the main application.
+        pbsys_diag_main_phase = 0x2200;
         pbio_main_start_application_resources();
+        pbsys_diag_main_phase = 0x2300;
+        pbsys_diag_main_run_calls++;
         pbsys_main_run_program(&program);
+        pbsys_diag_main_phase = 0x2400;
 
         // Stop motors, user animations, user bluetooth activity, etc.
         err = pbio_main_stop_application_resources();
+        pbsys_diag_main_phase = 0x2500;
 
         // Get system back in idle state.
         pbsys_status_clear(PBIO_PYBRICKS_STATUS_USER_PROGRAM_RUNNING);
@@ -126,6 +172,7 @@ void pbsys_main(void) {
         // stopping status light animation.
         while (pbio_os_run_processes_once()) {
         }
+        pbsys_diag_main_phase = 0x2600;
 
         if (err != PBIO_SUCCESS) {
             // If we couldn't get the system back in a normal state after

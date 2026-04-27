@@ -49,7 +49,28 @@ bool pbdrv_usb_connection_is_active(void) {
  */
 static pbdrv_usb_receive_handler_t pbdrv_usb_receive_handler;
 
+// Diagnostics for command dispatch path.
+volatile uint32_t pbdrv_usb_diag_set_receive_handler_calls;
+volatile uint32_t pbdrv_usb_diag_set_receive_handler_last_ptr;
+volatile uint32_t pbdrv_usb_diag_out_msg_total_calls;
+volatile uint32_t pbdrv_usb_diag_out_msg_last_type;
+volatile uint32_t pbdrv_usb_diag_out_msg_last_size;
+volatile uint32_t pbdrv_usb_diag_out_msg_last_word;
+volatile uint32_t pbdrv_usb_diag_out_msg_subscribe_calls;
+volatile uint32_t pbdrv_usb_diag_out_msg_command_calls;
+volatile uint32_t pbdrv_usb_diag_out_msg_other_calls;
+volatile uint32_t pbdrv_usb_diag_out_msg_last_subscribe_value;
+volatile uint32_t pbdrv_usb_diag_command_msg_calls;
+volatile uint32_t pbdrv_usb_diag_command_msg_last_size;
+volatile uint32_t pbdrv_usb_diag_command_msg_last_word;
+volatile uint32_t pbdrv_usb_diag_command_rx_handler_ptr;
+volatile uint32_t pbdrv_usb_diag_command_rx_handler_calls;
+volatile uint32_t pbdrv_usb_diag_command_rx_null_handler_calls;
+volatile uint32_t pbdrv_usb_diag_command_rx_last_result;
+
 void pbdrv_usb_set_receive_handler(pbdrv_usb_receive_handler_t handler) {
+    pbdrv_usb_diag_set_receive_handler_calls++;
+    pbdrv_usb_diag_set_receive_handler_last_ptr = (uint32_t)(uintptr_t)handler;
     pbdrv_usb_receive_handler = handler;
 }
 
@@ -238,7 +259,9 @@ static void pbdrv_usb_handle_data_in(void) {
 
     switch (data_in[0]) {
         case PBIO_PYBRICKS_OUT_EP_MSG_SUBSCRIBE:
+            pbdrv_usb_diag_out_msg_subscribe_calls++;
             pbdrv_usb_events_subscribed_set(data_in[1]);
+            pbdrv_usb_diag_out_msg_last_subscribe_value = data_in[1];
             pbdrv_usb_respond_result = PBIO_PYBRICKS_ERROR_OK;
             pbdrv_usb_respond_soon = true;
 
@@ -246,11 +269,53 @@ static void pbdrv_usb_handle_data_in(void) {
             pbdrv_usb_status_data_pending = true;
             break;
         case PBIO_PYBRICKS_OUT_EP_MSG_COMMAND:
+            pbdrv_usb_diag_out_msg_command_calls++;
+            pbdrv_usb_diag_command_msg_calls++;
+            pbdrv_usb_diag_command_msg_last_size = size - 1;
+            pbdrv_usb_diag_command_msg_last_word = 0;
+            if (size > 1) {
+                pbdrv_usb_diag_command_msg_last_word |= data_in[1];
+            }
+            if (size > 2) {
+                pbdrv_usb_diag_command_msg_last_word |= (uint32_t)data_in[2] << 8;
+            }
+            if (size > 3) {
+                pbdrv_usb_diag_command_msg_last_word |= (uint32_t)data_in[3] << 16;
+            }
+            if (size > 4) {
+                pbdrv_usb_diag_command_msg_last_word |= (uint32_t)data_in[4] << 24;
+            }
+
+            pbdrv_usb_diag_command_rx_handler_ptr = (uint32_t)(uintptr_t)pbdrv_usb_receive_handler;
             if (pbdrv_usb_receive_handler) {
+                pbdrv_usb_diag_command_rx_handler_calls++;
                 pbdrv_usb_respond_result = pbdrv_usb_receive_handler(data_in + 1, size - 1);
+                pbdrv_usb_diag_command_rx_last_result = pbdrv_usb_respond_result;
                 pbdrv_usb_respond_soon = true;
+            } else {
+                pbdrv_usb_diag_command_rx_null_handler_calls++;
             }
             break;
+        default:
+            pbdrv_usb_diag_out_msg_other_calls++;
+            break;
+    }
+
+    pbdrv_usb_diag_out_msg_total_calls++;
+    pbdrv_usb_diag_out_msg_last_type = data_in[0];
+    pbdrv_usb_diag_out_msg_last_size = size;
+    pbdrv_usb_diag_out_msg_last_word = 0;
+    if (size > 1) {
+        pbdrv_usb_diag_out_msg_last_word |= data_in[1];
+    }
+    if (size > 2) {
+        pbdrv_usb_diag_out_msg_last_word |= (uint32_t)data_in[2] << 8;
+    }
+    if (size > 3) {
+        pbdrv_usb_diag_out_msg_last_word |= (uint32_t)data_in[3] << 16;
+    }
+    if (size > 4) {
+        pbdrv_usb_diag_out_msg_last_word |= (uint32_t)data_in[4] << 24;
     }
 }
 

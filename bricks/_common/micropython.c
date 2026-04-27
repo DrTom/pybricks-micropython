@@ -41,6 +41,16 @@
 #include "py/stackctrl.h"
 #include "py/stream.h"
 
+// Diagnostics for REPL/user-program execution path.
+volatile uint32_t pbsys_diag_mp_run_program_calls;
+volatile uint32_t pbsys_diag_mp_run_program_last_id;
+volatile uint32_t pbsys_diag_mp_run_repl_calls;
+volatile uint32_t pbsys_diag_mp_run_repl_phase;
+volatile uint32_t pbsys_diag_mp_run_program_repl_case_calls;
+volatile uint32_t pbsys_diag_mp_run_program_default_case_calls;
+volatile uint32_t pbsys_diag_mp_run_program_last_case;
+volatile uint32_t pbsys_diag_mp_run_program_repl_case_phase;
+
 // callback for when stop button is pressed in IDE or on hub
 void pbsys_main_stop_program(bool force_stop) {
     if (force_stop) {
@@ -99,6 +109,8 @@ static void print_final_exception(mp_obj_t exc, int ret) {
 
 #if PBSYS_CONFIG_FEATURE_BUILTIN_USER_PROGRAM_REPL
 static void run_repl(void) {
+    pbsys_diag_mp_run_repl_calls++;
+    pbsys_diag_mp_run_repl_phase = 0x1000;
     int ret = 0;
 
     readline_init0();
@@ -107,24 +119,31 @@ static void run_repl(void) {
     nlr.ret_val = NULL;
 
     if (nlr_push(&nlr) == 0) {
+        pbsys_diag_mp_run_repl_phase = 0x1100;
         nlr_set_abort(&nlr);
         // No need to set interrupt_char here, it is done by pyexec.
         #if PYBRICKS_OPT_RAW_REPL
         if (pyexec_mode_kind == PYEXEC_MODE_RAW_REPL) {
+            pbsys_diag_mp_run_repl_phase = 0x1200;
             // Compatibility with mpremote.
             mp_printf(&mp_plat_print, "MPY: soft reboot\n");
             ret = pyexec_raw_repl();
         } else {
+            pbsys_diag_mp_run_repl_phase = 0x1300;
             ret = pyexec_friendly_repl();
         }
         #else // PYBRICKS_OPT_RAW_REPL
+        pbsys_diag_mp_run_repl_phase = 0x1400;
         ret = pyexec_friendly_repl();
         #endif // PYBRICKS_OPT_RAW_REPL
+        pbsys_diag_mp_run_repl_phase = 0x1500;
         nlr_pop();
     } else {
+        pbsys_diag_mp_run_repl_phase = 0x2000;
         // if vm abort
         if (nlr.ret_val == NULL) {
             // we are shutting down, so don't bother with cleanup
+            pbsys_diag_mp_run_repl_phase = 0x2100;
             return;
         }
 
@@ -132,9 +151,11 @@ static void run_repl(void) {
         mp_handle_pending(false);
         // Print which exception triggered this.
         print_final_exception(MP_OBJ_FROM_PTR(nlr.ret_val), ret);
+        pbsys_diag_mp_run_repl_phase = 0x2200;
     }
 
     nlr_set_abort(NULL);
+    pbsys_diag_mp_run_repl_phase = 0x2300;
 }
 #endif // PBSYS_CONFIG_FEATURE_BUILTIN_USER_PROGRAM_REPL
 
@@ -349,6 +370,11 @@ const char *pbsys_main_get_application_version_hash(void) {
 // Runs MicroPython with the given program data.
 void pbsys_main_run_program(pbsys_main_program_t *program) {
 
+    pbsys_diag_mp_run_program_calls++;
+    pbsys_diag_mp_run_program_last_id = program->id;
+    pbsys_diag_mp_run_program_last_case = 0;
+    pbsys_diag_mp_run_program_repl_case_phase = 0;
+
     #if PBDRV_CONFIG_STACK_EMBEDDED
     // Stack limit should be less than real stack size, so we have a chance
     // to recover from limit hit.  (Limit is measured in bytes.)
@@ -381,9 +407,15 @@ void pbsys_main_run_program(pbsys_main_program_t *program) {
 
         #if PBSYS_CONFIG_FEATURE_BUILTIN_USER_PROGRAM_REPL
         case PBIO_PYBRICKS_USER_PROGRAM_ID_REPL:
+            pbsys_diag_mp_run_program_repl_case_calls++;
+            pbsys_diag_mp_run_program_last_case = PBIO_PYBRICKS_USER_PROGRAM_ID_REPL;
+            pbsys_diag_mp_run_program_repl_case_phase = 0x8100;
             // Run REPL with everything auto-imported.
+            pbsys_diag_mp_run_program_repl_case_phase = 0x8200;
             pb_package_pybricks_init(true);
+            pbsys_diag_mp_run_program_repl_case_phase = 0x8300;
             run_repl();
+            pbsys_diag_mp_run_program_repl_case_phase = 0x8400;
             break;
         #endif
 
@@ -412,6 +444,8 @@ void pbsys_main_run_program(pbsys_main_program_t *program) {
         #endif
 
         default:
+            pbsys_diag_mp_run_program_default_case_calls++;
+            pbsys_diag_mp_run_program_last_case = 0xFFFFFFFF;
             // Init Pybricks package without auto-import.
             pb_package_pybricks_init(false);
             // Run loaded user program (just slot 0 for now).

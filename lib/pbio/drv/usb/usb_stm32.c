@@ -78,6 +78,36 @@ volatile uint32_t pbdrv_usb_diag_data_out_cb_count;
 volatile uint32_t pbdrv_usb_diag_data_in_cb_count;
 volatile uint32_t pbdrv_usb_diag_connect_cb_count;
 volatile uint32_t pbdrv_usb_diag_disconnect_cb_count;
+volatile uint32_t pbdrv_usb_diag_pybricks_class_init_calls;
+volatile uint32_t pbdrv_usb_diag_pybricks_class_deinit_calls;
+volatile uint32_t pbdrv_usb_diag_pybricks_setup_calls;
+volatile uint32_t pbdrv_usb_diag_pybricks_setup_class_calls;
+volatile uint32_t pbdrv_usb_diag_pybricks_setup_vendor_calls;
+volatile uint32_t pbdrv_usb_diag_pybricks_setup_standard_calls;
+volatile uint32_t pbdrv_usb_diag_pybricks_setup_fail_calls;
+volatile uint32_t pbdrv_usb_diag_pybricks_setup_last_bm_request;
+volatile uint32_t pbdrv_usb_diag_pybricks_setup_last_b_request;
+volatile uint32_t pbdrv_usb_diag_pybricks_setup_last_w_value;
+volatile uint32_t pbdrv_usb_diag_pybricks_setup_last_w_index;
+volatile uint32_t pbdrv_usb_diag_pybricks_setup_last_w_length;
+volatile uint32_t pbdrv_usb_diag_pybricks_data_out_calls;
+volatile uint32_t pbdrv_usb_diag_pybricks_data_in_calls;
+volatile uint32_t pbdrv_usb_diag_pybricks_data_out_last_len;
+volatile uint32_t pbdrv_usb_diag_pybricks_data_out_last_ep;
+volatile uint32_t pbdrv_usb_diag_pybricks_data_in_last_ep;
+volatile uint32_t pbdrv_usb_diag_rx_itf_calls;
+volatile uint32_t pbdrv_usb_diag_rx_itf_last_len;
+volatile uint32_t pbdrv_usb_diag_rx_itf_last_word;
+volatile uint32_t pbdrv_usb_diag_get_data_calls;
+volatile uint32_t pbdrv_usb_diag_get_data_nonzero;
+volatile uint32_t pbdrv_usb_diag_get_data_last_size;
+volatile uint32_t pbdrv_usb_diag_get_data_last_word;
+volatile uint32_t pbdrv_usb_diag_tx_event_calls;
+volatile uint32_t pbdrv_usb_diag_tx_event_timeouts;
+volatile uint32_t pbdrv_usb_diag_tx_response_calls;
+volatile uint32_t pbdrv_usb_diag_tx_response_timeouts;
+volatile uint32_t pbdrv_usb_diag_tx_last_size;
+volatile uint32_t pbdrv_usb_diag_tx_last_word;
 
 static void pbdrv_usb_stm32_poll_irq(void) {
     if (hpcd.Instance == NULL) {
@@ -279,6 +309,24 @@ static USBD_StatusTypeDef Pybricks_Itf_DeInit(void) {
   */
 static USBD_StatusTypeDef Pybricks_Itf_Receive(uint8_t *Buf, uint32_t Len) {
 
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_rx_itf_calls++;
+    pbdrv_usb_diag_rx_itf_last_len = Len;
+    pbdrv_usb_diag_rx_itf_last_word = 0;
+    if (Len > 0) {
+        pbdrv_usb_diag_rx_itf_last_word |= Buf[0];
+    }
+    if (Len > 1) {
+        pbdrv_usb_diag_rx_itf_last_word |= (uint32_t)Buf[1] << 8;
+    }
+    if (Len > 2) {
+        pbdrv_usb_diag_rx_itf_last_word |= (uint32_t)Buf[2] << 16;
+    }
+    if (Len > 3) {
+        pbdrv_usb_diag_rx_itf_last_word |= (uint32_t)Buf[3] << 24;
+    }
+    #endif
+
     usb_in_sz = Len;
     pbio_os_request_poll();
     return USBD_OK;
@@ -387,12 +435,33 @@ pbio_error_t pbdrv_usb_tx_event(pbio_os_state_t *state, const uint8_t *data, uin
         return PBIO_ERROR_BUSY;
     }
 
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_tx_event_calls++;
+    pbdrv_usb_diag_tx_last_size = size;
+    pbdrv_usb_diag_tx_last_word = 0;
+    if (size > 0) {
+        pbdrv_usb_diag_tx_last_word |= data[0];
+    }
+    if (size > 1) {
+        pbdrv_usb_diag_tx_last_word |= (uint32_t)data[1] << 8;
+    }
+    if (size > 2) {
+        pbdrv_usb_diag_tx_last_word |= (uint32_t)data[2] << 16;
+    }
+    if (size > 3) {
+        pbdrv_usb_diag_tx_last_word |= (uint32_t)data[3] << 24;
+    }
+    #endif
+
     transmitting = true;
     pbio_os_timer_set(&timer, PBDRV_USB_TRANSMIT_TIMEOUT);
     USBD_Pybricks_TransmitPacket(&husbd, (uint8_t *)data, size);
     PBIO_OS_AWAIT_UNTIL(state, !transmitting || pbio_os_timer_is_expired(&timer));
 
     if (pbio_os_timer_is_expired(&timer)) {
+        #if PBDRV_CONFIG_USB_STM32H5
+        pbdrv_usb_diag_tx_event_timeouts++;
+        #endif
         return PBIO_ERROR_TIMEDOUT;
     }
 
@@ -409,15 +478,30 @@ pbio_error_t pbdrv_usb_tx_response(pbio_os_state_t *state, pbio_pybricks_error_t
         return PBIO_ERROR_BUSY;
     }
 
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_tx_response_calls++;
+    #endif
+
     transmitting = true;
     pbio_os_timer_set(&timer, PBDRV_USB_TRANSMIT_TIMEOUT);
 
     pbio_set_uint32_le(&usb_response_buf[1], code);
 
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_tx_last_size = sizeof(usb_response_buf);
+    pbdrv_usb_diag_tx_last_word = usb_response_buf[0]
+        | ((uint32_t)usb_response_buf[1] << 8)
+        | ((uint32_t)usb_response_buf[2] << 16)
+        | ((uint32_t)usb_response_buf[3] << 24);
+    #endif
+
     USBD_Pybricks_TransmitPacket(&husbd, usb_response_buf, sizeof(usb_response_buf));
 
     PBIO_OS_AWAIT_UNTIL(state, !transmitting || pbio_os_timer_is_expired(&timer));
     if (pbio_os_timer_is_expired(&timer)) {
+        #if PBDRV_CONFIG_USB_STM32H5
+        pbdrv_usb_diag_tx_response_timeouts++;
+        #endif
         return PBIO_ERROR_TIMEDOUT;
     }
 
@@ -426,6 +510,7 @@ pbio_error_t pbdrv_usb_tx_response(pbio_os_state_t *state, pbio_pybricks_error_t
 
 uint32_t pbdrv_usb_get_data_and_start_receive(uint8_t *data) {
     #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_get_data_calls++;
     pbdrv_usb_stm32_poll_irq();
     #endif
 
@@ -434,6 +519,23 @@ uint32_t pbdrv_usb_get_data_and_start_receive(uint8_t *data) {
     }
 
     uint32_t size = usb_in_sz;
+    #if PBDRV_CONFIG_USB_STM32H5
+    pbdrv_usb_diag_get_data_nonzero++;
+    pbdrv_usb_diag_get_data_last_size = size;
+    pbdrv_usb_diag_get_data_last_word = 0;
+    if (size > 0) {
+        pbdrv_usb_diag_get_data_last_word |= usb_in_buf[0];
+    }
+    if (size > 1) {
+        pbdrv_usb_diag_get_data_last_word |= (uint32_t)usb_in_buf[1] << 8;
+    }
+    if (size > 2) {
+        pbdrv_usb_diag_get_data_last_word |= (uint32_t)usb_in_buf[2] << 16;
+    }
+    if (size > 3) {
+        pbdrv_usb_diag_get_data_last_word |= (uint32_t)usb_in_buf[3] << 24;
+    }
+    #endif
     memcpy(data, usb_in_buf, size);
 
     // Prepare to receive the next packet
