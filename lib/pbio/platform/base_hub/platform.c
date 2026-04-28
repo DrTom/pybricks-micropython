@@ -13,9 +13,71 @@ extern uint32_t *_fw_isr_vector_src;
 uint32_t SystemCoreClock = PBDRV_CONFIG_SYS_CLOCK_RATE;
 const uint8_t AHBPrescTable[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 6, 7, 8, 9 };
 
+volatile uint32_t pb_diag_hardfault_count __attribute__((used));
+volatile uint32_t pb_diag_hardfault_lr __attribute__((used));
+volatile uint32_t pb_diag_hardfault_sp __attribute__((used));
+volatile uint32_t pb_diag_hardfault_cfsr __attribute__((used));
+volatile uint32_t pb_diag_hardfault_hfsr __attribute__((used));
+volatile uint32_t pb_diag_hardfault_bfar __attribute__((used));
+volatile uint32_t pb_diag_hardfault_mmfar __attribute__((used));
+volatile uint32_t pb_diag_hardfault_cpacr __attribute__((used));
+volatile uint32_t pb_diag_hardfault_stacked_r0 __attribute__((used));
+volatile uint32_t pb_diag_hardfault_stacked_r1 __attribute__((used));
+volatile uint32_t pb_diag_hardfault_stacked_r2 __attribute__((used));
+volatile uint32_t pb_diag_hardfault_stacked_r3 __attribute__((used));
+volatile uint32_t pb_diag_hardfault_stacked_r12 __attribute__((used));
+volatile uint32_t pb_diag_hardfault_stacked_lr __attribute__((used));
+volatile uint32_t pb_diag_hardfault_stacked_pc __attribute__((used));
+volatile uint32_t pb_diag_hardfault_stacked_xpsr __attribute__((used));
+
+void pb_diag_hardfault_handler_c(uint32_t *sp, uint32_t lr) __attribute__((used, noinline));
+void pb_diag_hardfault_handler_c(uint32_t *sp, uint32_t lr) {
+    pb_diag_hardfault_count++;
+    pb_diag_hardfault_lr = lr;
+    pb_diag_hardfault_sp = (uint32_t)sp;
+
+    pb_diag_hardfault_cfsr = SCB->CFSR;
+    pb_diag_hardfault_hfsr = SCB->HFSR;
+    pb_diag_hardfault_bfar = SCB->BFAR;
+    pb_diag_hardfault_mmfar = SCB->MMFAR;
+    pb_diag_hardfault_cpacr = SCB->CPACR;
+
+    if (sp) {
+        pb_diag_hardfault_stacked_r0 = sp[0];
+        pb_diag_hardfault_stacked_r1 = sp[1];
+        pb_diag_hardfault_stacked_r2 = sp[2];
+        pb_diag_hardfault_stacked_r3 = sp[3];
+        pb_diag_hardfault_stacked_r12 = sp[4];
+        pb_diag_hardfault_stacked_lr = sp[5];
+        pb_diag_hardfault_stacked_pc = sp[6];
+        pb_diag_hardfault_stacked_xpsr = sp[7];
+    }
+
+    for (;;) {
+    }
+}
+
+void HardFault_Handler(void) __attribute__((naked));
+void HardFault_Handler(void) {
+    __asm volatile (
+        "tst   lr, #4              \n"
+        "ite   eq                  \n"
+        "mrseq r0, msp             \n"
+        "mrsne r0, psp             \n"
+        "mov   r1, lr              \n"
+        "b     pb_diag_hardfault_handler_c \n"
+    );
+}
+
 void SystemInit(void) {
     pbdrv_usb_diag_systeminit_calls++;
     pbdrv_usb_diag_stage = 0x0100;
+
+    // Enable FP extension access (CP10, CP11 full access) before any code path
+    // that may use floating-point registers in assembly (e.g. MicroPython NLR).
+    SCB->CPACR |= (0xFu << 20);
+    __DSB();
+    __ISB();
 
     SCB->VTOR = (uint32_t)&_fw_isr_vector_src;
 
