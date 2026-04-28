@@ -90,6 +90,8 @@ static void pbdrv_block_device_update_ramdisk_size_and_checksum(uint32_t used_da
 
     #if defined(STM32H7)
     const uint32_t write_size = FLASH_NB_32BITWORD_IN_FLASHWORD * sizeof(uint32_t);
+    #elif defined(STM32H5)
+    const uint32_t write_size = 16;
     #else
     const uint32_t write_size = sizeof(uint64_t);
     #endif
@@ -135,8 +137,15 @@ pbio_error_t pbdrv_block_device_write_all(pbio_os_state_t *state, uint32_t used_
 
     #if defined(STM32H7)
     const uint32_t flash_write_size = FLASH_NB_32BITWORD_IN_FLASHWORD * sizeof(uint32_t);
+    #elif defined(STM32H5)
+    const uint32_t flash_write_size = 16;
     #else
     const uint32_t flash_write_size = sizeof(uint64_t);
+    #endif
+
+    #if defined(STM32H5)
+    const uint32_t flash_bank = base_address < (FLASH_BASE + FLASH_BANK_SIZE) ? FLASH_BANK_1 : FLASH_BANK_2;
+    const uint32_t flash_sector = (base_address - FLASH_BASE) / FLASH_SECTOR_SIZE;
     #endif
 
     // Exit if size is 0, too big, or not a multiple of write granularity.
@@ -163,10 +172,15 @@ pbio_error_t pbdrv_block_device_write_all(pbio_os_state_t *state, uint32_t used_
         .Sector = 7,
         .NbSectors = 1,
         .VoltageRange = FLASH_VOLTAGE_RANGE_3,
+        #elif defined(STM32H5)
+        .TypeErase = FLASH_TYPEERASE_SECTORS,
+        .Banks = flash_bank,
+        .Sector = flash_sector,
+        .NbSectors = PBDRV_CONFIG_BLOCK_DEVICE_FLASH_STM32_SIZE / FLASH_SECTOR_SIZE,
         #else
         #error "Unsupported target."
         #endif
-        #if !defined(STM32H7)
+        #if !defined(STM32H7) && !defined(STM32H5)
         .NbPages = PBDRV_CONFIG_BLOCK_DEVICE_FLASH_STM32_SIZE / FLASH_PAGE_SIZE,
         .TypeErase = FLASH_TYPEERASE_PAGES
         #endif
@@ -196,6 +210,8 @@ pbio_error_t pbdrv_block_device_write_all(pbio_os_state_t *state, uint32_t used_
         // Write the data and re-enable interrupts.
         #if defined(STM32H7)
         hal_err = HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, base_address + done, (uint32_t)((uint8_t *)&ramdisk + done));
+        #elif defined(STM32H5)
+        hal_err = HAL_FLASH_Program(FLASH_TYPEPROGRAM_QUADWORD, base_address + done, (uint32_t)((uint8_t *)&ramdisk + done));
         #else
         hal_err = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, base_address + done, *(uint64_t *)((void *)&ramdisk + done));
         #endif

@@ -108,6 +108,10 @@ volatile uint32_t pbdrv_usb_diag_tx_response_calls;
 volatile uint32_t pbdrv_usb_diag_tx_response_timeouts;
 volatile uint32_t pbdrv_usb_diag_tx_last_size;
 volatile uint32_t pbdrv_usb_diag_tx_last_word;
+volatile uint32_t pbdrv_usb_diag_caps_reads;
+volatile uint32_t pbdrv_usb_diag_caps_last_flags;
+volatile uint32_t pbdrv_usb_diag_caps_last_max_program_size;
+volatile uint32_t pbdrv_usb_diag_caps_last_max_user_programs;
 
 static void pbdrv_usb_stm32_poll_irq(void) {
     if (hpcd.Instance == NULL) {
@@ -388,11 +392,17 @@ static USBD_StatusTypeDef Pybricks_Itf_ReadCharacteristic(USBD_HandleTypeDef *pd
                 case 0x0003: {
                     // Pybricks hub capabilities characteristic
                     uint8_t caps[PBIO_PYBRICKS_HUB_CAPABILITIES_VALUE_SIZE];
+                    uint32_t max_program_size = pbsys_storage_get_maximum_program_size();
+                    uint8_t max_user_programs = PBSYS_CONFIG_HMI_NUM_SLOTS;
+                    pbdrv_usb_diag_caps_reads++;
+                    pbdrv_usb_diag_caps_last_flags = PBSYS_CONFIG_APP_FEATURE_FLAGS;
+                    pbdrv_usb_diag_caps_last_max_program_size = max_program_size;
+                    pbdrv_usb_diag_caps_last_max_user_programs = max_user_programs;
                     pbio_pybricks_hub_capabilities(caps,
                         USBD_PYBRICKS_MAX_PACKET_SIZE - 1,
                         PBSYS_CONFIG_APP_FEATURE_FLAGS,
-                        pbsys_storage_get_maximum_program_size(),
-                        PBSYS_CONFIG_HMI_NUM_SLOTS);
+                        max_program_size,
+                        max_user_programs);
                     (void)USBD_CtlSendData(pdev, caps, MIN(sizeof(caps), req->wLength));
                 }
                 break;

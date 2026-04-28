@@ -107,7 +107,7 @@ pbio_error_t pbio_main_stop_application_resources(void) {
     pbdrv_display_update();
     #endif
 
-    pbio_os_run_processes_and_wait_for_event();
+    pbio_os_run_processes_once();
 
     return err;
 }
