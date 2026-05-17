@@ -39,7 +39,7 @@
 #define EV3_UART_SPEED_LPF2         115200  // standard baud rate for Powered Up
 #define EV3_UART_SPEED_MAX          460800  // in practice 115200 is max
 
-#define EV3_UART_DATA_KEEP_ALIVE_TIMEOUT    100 /* msec */
+#define EV3_UART_DATA_KEEP_ALIVE_TIMEOUT    250 /* msec */
 #define EV3_UART_IO_TIMEOUT                 250 /* msec */
 
 enum ev3_uart_info_bit {
