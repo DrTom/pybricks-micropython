@@ -177,6 +177,28 @@ struct _pbio_port_lump_dev_t {
     uint32_t err_count;
     /** Flag that indicates that good DATA lump_dev->msg has been received since last watchdog timeout. */
     bool data_rec;
+    /** Time of last successfully received UART header byte. */
+    uint32_t last_rx_header_time;
+    /** Time of last successfully parsed DATA message. */
+    uint32_t last_data_msg_time;
+    /** Count of successfully parsed DATA messages. */
+    uint32_t data_msg_count;
+    /** Count of checksum failures while parsing messages. */
+    uint32_t crc_err_count;
+    /** Count of invalid DATA message sizes in receive loop. */
+    uint32_t bad_size_count;
+    /** Count of unexpected message types in receive loop. */
+    uint32_t bad_type_count;
+    /** Count of UART header read timeouts in DATA state. */
+    uint32_t rx_header_timeout_count;
+    /** Count of UART payload read timeouts in DATA state. */
+    uint32_t rx_payload_timeout_count;
+    /** Count of keepalive NACK sends in DATA state. */
+    uint32_t keepalive_send_count;
+    /** Count of keepalive disconnect events in DATA state. */
+    uint32_t keepalive_timeout_count;
+    /** Count of UART TX timeout errors in DATA state. */
+    uint32_t tx_timeout_count;
     /** Angle reported by the device. */
     pbio_angle_t angle;
     #if PBIO_CONFIG_PORT_LUMP_MODE_INFO
@@ -262,6 +284,13 @@ static uint8_t ev3_uart_get_msg_size(uint8_t header) {
 
     }
     return size;
+}
+
+static uint32_t pbio_port_lump_age_ms(uint32_t timestamp_ms) {
+    if (timestamp_ms == 0) {
+        return UINT32_MAX;
+    }
+    return pbdrv_clock_get_ms() - timestamp_ms;
 }
 
 
@@ -388,6 +417,7 @@ static void pbio_port_lump_lump_parse_msg(pbio_port_lump_dev_t *lump_dev) {
         }
         if (checksum != lump_dev->rx_msg[msg_size - 1]) {
             debug_pr("Bad checksum\n");
+            lump_dev->crc_err_count++;
             // if INFO messages are done and we are now receiving data, it is
             // OK to occasionally have a bad checksum
             if (lump_dev->status == PBDRV_LEGODEV_LUMP_STATUS_DATA) {
@@ -661,6 +691,8 @@ static void pbio_port_lump_lump_parse_msg(pbio_port_lump_dev_t *lump_dev) {
             pbio_port_lump_handle_known_data(lump_dev);
 
             lump_dev->data_rec = true;
+            lump_dev->last_data_msg_time = pbdrv_clock_get_ms();
+            lump_dev->data_msg_count++;
             break;
     }
 
@@ -937,12 +969,32 @@ pbio_error_t pbio_port_lump_data_send_thread(pbio_os_state_t *state, pbio_port_l
 
         // Handle keep alive timeout
         if (pbio_os_timer_is_expired(timer)) {
+            if (!lump_dev->data_rec || ((lump_dev->keepalive_send_count & 0x1FU) == 0U)) {
+                debug_pr("keepalive: data_rec=%d mode=%d waiting=%lu age_data=%lu age_rx=%lu\n",
+                    lump_dev->data_rec,
+                    lump_dev->mode,
+                    (unsigned long)pbdrv_uart_in_waiting(uart_dev),
+                    (unsigned long)pbio_port_lump_age_ms(lump_dev->last_data_msg_time),
+                    (unsigned long)pbio_port_lump_age_ms(lump_dev->last_rx_header_time));
+            }
             // Make sure we are receiving data. The first time around, we allow
             // not having any data yet.
             if (!lump_dev->data_rec && timer->duration == EV3_UART_DATA_KEEP_ALIVE_TIMEOUT) {
                 lump_dev->err_count++;
                 if (lump_dev->err_count >= EV3_UART_MAX_DATA_ERR) {
-                debug_pr("No data since last keepalive\n");
+                    lump_dev->keepalive_timeout_count++;
+                    debug_pr("No data since last keepalive: miss=%lu data_msgs=%lu crc=%lu bad_size=%lu bad_type=%lu rx_hdr_to=%lu rx_pl_to=%lu tx_to=%lu waiting=%lu age_data=%lu age_rx=%lu\n",
+                    (unsigned long)lump_dev->err_count,
+                    (unsigned long)lump_dev->data_msg_count,
+                    (unsigned long)lump_dev->crc_err_count,
+                    (unsigned long)lump_dev->bad_size_count,
+                    (unsigned long)lump_dev->bad_type_count,
+                    (unsigned long)lump_dev->rx_header_timeout_count,
+                    (unsigned long)lump_dev->rx_payload_timeout_count,
+                    (unsigned long)lump_dev->tx_timeout_count,
+                    (unsigned long)pbdrv_uart_in_waiting(uart_dev),
+                    (unsigned long)pbio_port_lump_age_ms(lump_dev->last_data_msg_time),
+                    (unsigned long)pbio_port_lump_age_ms(lump_dev->last_rx_header_time));
                 lump_dev->status = PBDRV_LEGODEV_LUMP_STATUS_ERR;
                 return PBIO_ERROR_TIMEDOUT;
                 }
@@ -954,9 +1006,13 @@ pbio_error_t pbio_port_lump_data_send_thread(pbio_os_state_t *state, pbio_port_l
             lump_dev->tx_msg_size = 1;
             PBIO_OS_AWAIT(state, &lump_dev->write_pt, err = pbdrv_uart_write(&lump_dev->write_pt, uart_dev, lump_dev->tx_msg, lump_dev->tx_msg_size, EV3_UART_IO_TIMEOUT));
             if (err != PBIO_SUCCESS) {
+                if (err == PBIO_ERROR_TIMEDOUT) {
+                    lump_dev->tx_timeout_count++;
+                }
                 debug_pr("Error during keepalive.\n");
                 return err;
             }
+            lump_dev->keepalive_send_count++;
             pbio_os_timer_set(timer, EV3_UART_DATA_KEEP_ALIVE_TIMEOUT);
         }
 
@@ -966,6 +1022,9 @@ pbio_error_t pbio_port_lump_data_send_thread(pbio_os_state_t *state, pbio_port_l
             ev3_uart_prepare_tx_msg(lump_dev, LUMP_MSG_TYPE_CMD, LUMP_CMD_SELECT, &lump_dev->mode_switch.desired_mode, 1);
             PBIO_OS_AWAIT(state, &lump_dev->write_pt, err = pbdrv_uart_write(&lump_dev->write_pt, uart_dev, lump_dev->tx_msg, lump_dev->tx_msg_size, EV3_UART_IO_TIMEOUT));
             if (err != PBIO_SUCCESS) {
+                if (err == PBIO_ERROR_TIMEDOUT) {
+                    lump_dev->tx_timeout_count++;
+                }
                 debug_pr("Setting requested mode failed.\n");
                 return err;
             }
@@ -980,6 +1039,9 @@ pbio_error_t pbio_port_lump_data_send_thread(pbio_os_state_t *state, pbio_port_l
                 lump_dev->data_set->time = pbdrv_clock_get_ms();
                 PBIO_OS_AWAIT(state, &lump_dev->write_pt, err = pbdrv_uart_write(&lump_dev->write_pt, uart_dev, lump_dev->tx_msg, lump_dev->tx_msg_size, EV3_UART_IO_TIMEOUT));
                 if (err != PBIO_SUCCESS) {
+                    if (err == PBIO_ERROR_TIMEDOUT) {
+                        lump_dev->tx_timeout_count++;
+                    }
                     debug_pr("Setting requested data failed.\n");
                     return err;
                 }
@@ -1026,13 +1088,18 @@ pbio_error_t pbio_port_lump_data_recv_thread(pbio_os_state_t *state, pbio_port_l
         if (err != PBIO_SUCCESS) {
             if (err == PBIO_ERROR_TIMEDOUT) {
                 continue;
+                lump_dev->rx_header_timeout_count++;
+                continue;
             }
             debug_pr("UART Rx data header end error\n");
             return err;
         }
 
+        lump_dev->last_rx_header_time = pbdrv_clock_get_ms();
+
         lump_dev->rx_msg_size = ev3_uart_get_msg_size(lump_dev->rx_msg[0]);
         if (lump_dev->rx_msg_size < 3 || lump_dev->rx_msg_size > EV3_UART_MAX_MESSAGE_SIZE) {
+            lump_dev->bad_size_count++;
             rx_bad_header_streak[device_index]++;
             if (rx_bad_header_streak[device_index] >= 8) {
                 pbdrv_uart_flush(uart_dev);
@@ -1046,6 +1113,7 @@ pbio_error_t pbio_port_lump_data_recv_thread(pbio_os_state_t *state, pbio_port_l
         uint8_t cmd = lump_dev->rx_msg[0] & LUMP_MSG_CMD_MASK;
         if (msg_type != LUMP_MSG_TYPE_DATA && (msg_type != LUMP_MSG_TYPE_CMD ||
                                                (cmd != LUMP_CMD_WRITE && cmd != LUMP_CMD_EXT_MODE))) {
+            lump_dev->bad_type_count++;
             rx_bad_header_streak[device_index]++;
             if (rx_bad_header_streak[device_index] >= 8) {
                 pbdrv_uart_flush(uart_dev);
@@ -1058,6 +1126,7 @@ pbio_error_t pbio_port_lump_data_recv_thread(pbio_os_state_t *state, pbio_port_l
         PBIO_OS_AWAIT(state, &lump_dev->read_pt, err = pbdrv_uart_read(&lump_dev->read_pt, uart_dev, lump_dev->rx_msg + 1, lump_dev->rx_msg_size - 1, EV3_UART_IO_TIMEOUT));
         if (err != PBIO_SUCCESS) {
             if (err == PBIO_ERROR_TIMEDOUT) {
+                lump_dev->rx_payload_timeout_count++;
                 pbdrv_uart_flush(uart_dev);
                 rx_bad_header_streak[device_index] = 0;
                 continue;
