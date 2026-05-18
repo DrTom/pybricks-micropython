@@ -201,6 +201,12 @@ enum {
 
 static uint8_t bufs[PBIO_CONFIG_PORT_LUMP_NUM_DEV][NUM_BUF][EV3_UART_MAX_MESSAGE_SIZE];
 
+static uint8_t rx_bad_header_streak[PBIO_CONFIG_PORT_LUMP_NUM_DEV];
+
+static inline size_t pbio_port_lump_get_index(pbio_port_lump_dev_t *lump_dev) {
+    return (size_t)(lump_dev - &lump_devices[0]);
+}
+
 // The following data is really just part of lump_devices, but separate allocation reduces overal code size
 static uint8_t data_read_bufs[PBIO_CONFIG_PORT_LUMP_NUM_DEV][LUMP_MAX_MSG_SIZE] __attribute__((aligned(4)));
 static pbdrv_legodev_lump_data_set_t data_set_bufs[PBIO_CONFIG_PORT_LUMP_NUM_DEV];
@@ -214,6 +220,7 @@ pbio_port_lump_dev_t *pbio_port_lump_init_instance(uint8_t device_index) {
     lump_dev->rx_msg = &bufs[device_index][BUF_RX_MSG][0];
     lump_dev->status = PBDRV_LEGODEV_LUMP_STATUS_ERR;
     lump_dev->err_count = 0;
+    rx_bad_header_streak[device_index] = 0;
     lump_dev->data_set = &data_set_bufs[device_index];
     lump_dev->bin_data = data_read_bufs[device_index];
     return lump_dev;
@@ -933,9 +940,14 @@ pbio_error_t pbio_port_lump_data_send_thread(pbio_os_state_t *state, pbio_port_l
             // Make sure we are receiving data. The first time around, we allow
             // not having any data yet.
             if (!lump_dev->data_rec && timer->duration == EV3_UART_DATA_KEEP_ALIVE_TIMEOUT) {
+                lump_dev->err_count++;
+                if (lump_dev->err_count >= EV3_UART_MAX_DATA_ERR) {
                 debug_pr("No data since last keepalive\n");
                 lump_dev->status = PBDRV_LEGODEV_LUMP_STATUS_ERR;
                 return PBIO_ERROR_TIMEDOUT;
+                }
+            } else {
+                lump_dev->err_count = 0;
             }
             lump_dev->data_rec = false;
             lump_dev->tx_msg[0] = LUMP_SYS_NACK;
@@ -1001,6 +1013,7 @@ pbio_error_t pbio_port_lump_data_recv_thread(pbio_os_state_t *state, pbio_port_l
     }
 
     pbio_error_t err;
+    size_t device_index = pbio_port_lump_get_index(lump_dev);
 
     // REVISIT: This is not the greatest. We can easily get a buffer overrun and
     // loose data. For now, the retry after bad message size helps get back into
@@ -1011,12 +1024,20 @@ pbio_error_t pbio_port_lump_data_recv_thread(pbio_os_state_t *state, pbio_port_l
     while (true) {
         PBIO_OS_AWAIT(state, &lump_dev->read_pt, err = pbdrv_uart_read(&lump_dev->read_pt, uart_dev, lump_dev->rx_msg, 1, EV3_UART_IO_TIMEOUT));
         if (err != PBIO_SUCCESS) {
+            if (err == PBIO_ERROR_TIMEDOUT) {
+                continue;
+            }
             debug_pr("UART Rx data header end error\n");
             return err;
         }
 
         lump_dev->rx_msg_size = ev3_uart_get_msg_size(lump_dev->rx_msg[0]);
         if (lump_dev->rx_msg_size < 3 || lump_dev->rx_msg_size > EV3_UART_MAX_MESSAGE_SIZE) {
+            rx_bad_header_streak[device_index]++;
+            if (rx_bad_header_streak[device_index] >= 8) {
+                pbdrv_uart_flush(uart_dev);
+                rx_bad_header_streak[device_index] = 0;
+            }
             debug_pr("Bad data message size\n");
             continue;
         }
@@ -1025,15 +1046,27 @@ pbio_error_t pbio_port_lump_data_recv_thread(pbio_os_state_t *state, pbio_port_l
         uint8_t cmd = lump_dev->rx_msg[0] & LUMP_MSG_CMD_MASK;
         if (msg_type != LUMP_MSG_TYPE_DATA && (msg_type != LUMP_MSG_TYPE_CMD ||
                                                (cmd != LUMP_CMD_WRITE && cmd != LUMP_CMD_EXT_MODE))) {
+            rx_bad_header_streak[device_index]++;
+            if (rx_bad_header_streak[device_index] >= 8) {
+                pbdrv_uart_flush(uart_dev);
+                rx_bad_header_streak[device_index] = 0;
+            }
             debug_pr("Bad msg type\n");
             continue;
         }
 
         PBIO_OS_AWAIT(state, &lump_dev->read_pt, err = pbdrv_uart_read(&lump_dev->read_pt, uart_dev, lump_dev->rx_msg + 1, lump_dev->rx_msg_size - 1, EV3_UART_IO_TIMEOUT));
         if (err != PBIO_SUCCESS) {
+            if (err == PBIO_ERROR_TIMEDOUT) {
+                pbdrv_uart_flush(uart_dev);
+                rx_bad_header_streak[device_index] = 0;
+                continue;
+            }
             debug_pr("UART Rx data end error\n");
             return err;
         }
+
+        rx_bad_header_streak[device_index] = 0;
 
         // at this point, we have a full lump_dev->msg that can be parsed
         pbio_port_lump_lump_parse_msg(lump_dev);
