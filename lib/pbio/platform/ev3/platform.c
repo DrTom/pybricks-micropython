@@ -317,11 +317,7 @@ const pbdrv_ioport_platform_data_t pbdrv_ioport_platform_data[PBDRV_CONFIG_IOPOR
             .adc_p1 = 6,
             .adc_p6 = 5,
         },
-        #if PBDRV_CONFIG_UART_DEBUG_FIRST_PORT
-        .supported_modes = PBIO_PORT_MODE_UART,
-        #else // PBDRV_CONFIG_UART_DEBUG_FIRST_PORT
         .supported_modes = PBIO_PORT_MODE_UART | PBIO_PORT_MODE_I2C | PBIO_PORT_MODE_GPIO_ADC | PBIO_PORT_MODE_LEGO_DCM,
-        #endif
     },
     {
         .port_id = PBIO_PORT_ID_2,
